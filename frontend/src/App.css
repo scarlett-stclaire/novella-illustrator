@@ -1,0 +1,427 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  background: #121212;
+  color: #eee;
+  margin: 0;
+}
+
+.app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+.home-link {
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.health {
+  color: #999;
+  font-size: 0.9rem;
+}
+
+.error {
+  color: #ff6b6b;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.upload-form input,
+.upload-form textarea,
+.scene-card textarea {
+  width: 100%;
+  background: #1e1e1e;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-family: inherit;
+}
+
+button {
+  background: #3a6ff7;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+select {
+  background: #1e1e1e;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+button:disabled {
+  background: #444;
+  cursor: default;
+}
+
+.scene-list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.scene-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scene-header {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #333;
+  text-transform: uppercase;
+}
+
+.status-done {
+  background: #1e5c3a;
+}
+
+.status-error {
+  background: #6b1e1e;
+}
+
+.status-generating,
+.status-breaking_down {
+  background: #5c4a1e;
+}
+
+.status-ready {
+  background: #1e5c3a;
+}
+
+.scene-summary {
+  color: #bbb;
+}
+
+.scene-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.scene-progress,
+.breakdown-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  color: #bbb;
+}
+
+.breakdown-progress {
+  margin: 1rem 0;
+}
+
+.scene-progress progress,
+.breakdown-progress progress {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: none;
+  background: #2a2a2a;
+}
+
+.scene-progress progress::-webkit-progress-bar,
+.breakdown-progress progress::-webkit-progress-bar {
+  background: #2a2a2a;
+  border-radius: 999px;
+}
+
+.scene-progress progress::-webkit-progress-value,
+.breakdown-progress progress::-webkit-progress-value {
+  background: #5c7cfa;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.scene-progress progress::-moz-progress-bar,
+.breakdown-progress progress::-moz-progress-bar {
+  background: #5c7cfa;
+  border-radius: 999px;
+}
+
+.scene-error {
+  color: #ff6b6b;
+  font-size: 0.85rem;
+}
+
+.scene-image {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.scene-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scene-feedback-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.scene-engine-note {
+  color: #999;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.scene-feedback textarea {
+  width: 100%;
+  background: #1e1e1e;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.scene-count-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: #bbb;
+}
+
+.scene-count-field input {
+  max-width: 160px;
+}
+
+.status-manual {
+  background: #2a3a5c;
+}
+
+.delete-btn {
+  background: #3a2222;
+  margin-left: auto;
+}
+
+.delete-btn:hover {
+  background: #5c2727;
+}
+
+.add-scene-trigger {
+  background: transparent;
+  border: 1px dashed #444;
+  color: #888;
+  width: 100%;
+  font-size: 0.85rem;
+  padding: 0.4rem;
+}
+
+.add-scene-trigger:hover {
+  border-color: #5c7cfa;
+  color: #5c7cfa;
+}
+
+.add-scene-form {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.add-scene-form textarea {
+  width: 100%;
+  background: #1e1e1e;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-family: inherit;
+}
+
+.add-scene-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.source-coverage {
+  margin: 1rem 0;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.coverage-summary {
+  color: #bbb;
+  font-size: 0.85rem;
+  margin-top: 0;
+}
+
+.coverage-text {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  max-height: 400px;
+  overflow-y: auto;
+  font-size: 0.9rem;
+}
+
+.coverage-text .covered {
+  background: rgba(92, 124, 250, 0.25);
+  color: #eee;
+  border-radius: 3px;
+}
+
+.coverage-text .uncovered {
+  color: #666;
+}
+
+.novella-home-list {
+  margin-top: 2rem;
+}
+
+.novella-home-list h2 {
+  font-size: 1rem;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.novella-home-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.novella-link {
+  width: 100%;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.novella-link:hover {
+  border-color: #5c7cfa;
+}
+
+.novella-link-title {
+  flex: 1;
+  font-weight: 600;
+  color: #eee;
+}
+
+.novella-link-meta {
+  color: #999;
+  font-size: 0.85rem;
+}
+
+.settings-link {
+  float: right;
+  font-size: 0.9rem;
+  color: #5c7cfa;
+}
+
+.settings-note {
+  color: #999;
+  font-size: 0.85rem;
+}
+
+.settings-notice {
+  color: #6fd68c;
+  font-size: 0.85rem;
+}
+
+.provider-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.provider-row {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.provider-row-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.provider-default {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: #bbb;
+}
+
+.provider-key-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.provider-key-row input {
+  flex: 1;
+  background: #1e1e1e;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+}
+
+.provider-masked-key {
+  font-family: monospace;
+  color: #bbb;
+}

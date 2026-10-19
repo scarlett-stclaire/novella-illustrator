@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "description": "Open-source model catalogue (F23). The repository holds this manifest only, never the weights - entries list where to get them and where they land. 'id' for image_engine entries matches the engine id in backend/app/engines.py so download status can be cross-checked against what ComfyUI actually has loaded.",
+  "models": [
+    {
+      "id": "flux_schnell",
+      "display_name": "FLUX.1 schnell",
+      "task_type": "image",
+      "license": "FLUX.1 [schnell] Non-Commercial License (Black Forest Labs)",
+      "download_size_gb": 24,
+      "source_url": "https://huggingface.co/black-forest-labs/FLUX.1-schnell",
+      "checksum": null,
+      "description": "Fast 4-step image model. Requires a free huggingface.co account and accepting the licence; no negative-prompt input so it can't be steered away from anatomy issues.",
+      "requires_account": true,
+      "download_hint": "hf download black-forest-labs/FLUX.1-schnell flux1-schnell.safetensors ae.safetensors --local-dir comfyui/models (then move into unet/ and vae/); hf download comfyanonymous/flux_text_encoders clip_l.safetensors t5xxl_fp8_e4m3fn.safetensors --local-dir comfyui/models/clip"
+    },
+    {
+      "id": "sdxl_adetailer",
+      "display_name": "SDXL + ADetailer",
+      "task_type": "image",
+      "license": "CreativeML Open RAIL++-M (Stability AI) + AGPL-3.0 (Impact Pack/ADetailer)",
+      "download_size_gb": 7,
+      "source_url": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
+      "checksum": null,
+      "description": "SDXL base checkpoint plus an automatic face/hand detection and inpaint pass. The strongest engine for fixing contorted anatomy.",
+      "requires_account": false,
+      "download_hint": "hf download stabilityai/stable-diffusion-xl-base-1.0 sd_xl_base_1.0.safetensors --local-dir comfyui/models/checkpoints; hf download Bingsu/adetailer face_yolov8m.pt hand_yolov8n.pt --local-dir comfyui/models/ultralytics/bbox"
+    },
+    {
+      "id": "qwen_image_2512",
+      "display_name": "Qwen-Image-2512",
+      "task_type": "image",
+      "license": "Apache 2.0",
+      "download_size_gb": 32,
+      "source_url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI",
+      "checksum": null,
+      "description": "Sharpest detail and best in-image text rendering, at the cost of the slowest generation time even with its 4-step Lightning LoRA. No account required.",
+      "requires_account": false,
+      "download_hint": "hf download Comfy-Org/Qwen-Image_ComfyUI split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors split_files/vae/qwen_image_vae.safetensors --local-dir comfyui/models (then move each into diffusion_models/, text_encoders/, vae/); hf download lightx2v/Qwen-Image-2512-Lightning Qwen-Image-2512-Lightning-4steps-V1.0-fp32.safetensors --local-dir comfyui/models/loras"
+    },
+    {
+      "id": "ollama_llama3_1_8b",
+      "display_name": "Llama 3.1 8B (via Ollama)",
+      "task_type": "text",
+      "license": "Llama 3.1 Community License (Meta)",
+      "download_size_gb": 4.7,
+      "source_url": "https://ollama.com/library/llama3.1",
+      "checksum": null,
+      "description": "Default local scene-breakdown model, pulled and served by Ollama rather than ComfyUI.",
+      "requires_account": false,
+      "download_hint": "ollama pull llama3.1:8b"
+    }
+  ]
+}

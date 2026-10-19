@@ -1,0 +1,21 @@
+.env
+.DS_Store
+node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+comfyui/models/**/*.safetensors
+comfyui/models/**/*.ckpt
+comfyui/models/**/*.pt
+comfyui/models/**/*.pth
+comfyui/models/**/*.gguf
+comfyui/output/
+backend/data/novellas/*.json
+backend/data/images/*
+!backend/data/images/.gitkeep
+
+# Native setup artifacts (rebuilt by scripts/setup.sh on any machine)
+backend/.venv/
+comfyui/src/
+logs/
+.pids/

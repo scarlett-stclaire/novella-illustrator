@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "description": "Per-engine capability profile used by backend/app/recommend.py to pick a suggested image-generation engine for a given scene (F9/F17/F18). Scores are 1-5, relative judgement calls based on observed output quality on this stack - not a benchmark. Safe to hand-tune as real usage reveals better/worse fits; bump 'version' on any scoring change so stored recommendations can be told apart from ones made under an older profile.",
+  "image_engines": {
+    "flux_schnell": {
+      "scene_type_scores": {
+        "landscape": 4,
+        "human_figures": 2,
+        "drama": 3,
+        "action": 3,
+        "text_heavy": 2,
+        "generic": 4
+      },
+      "complexity_scores": { "simple": 5, "moderate": 4, "complex": 2 },
+      "fix_strengths": { "anatomy": 1, "text_rendering": 2, "detail": 3 },
+      "avg_seconds_per_image": 210,
+      "notes": "Fastest engine (4 sampling steps). No negative-prompt input, so it has no way to steer away from anatomy problems once they start - best for simple/generic scenes, worst pick for contorted-hand feedback."
+    },
+    "sdxl_adetailer": {
+      "scene_type_scores": {
+        "landscape": 3,
+        "human_figures": 5,
+        "drama": 5,
+        "action": 4,
+        "text_heavy": 2,
+        "generic": 4
+      },
+      "complexity_scores": { "simple": 4, "moderate": 5, "complex": 4 },
+      "fix_strengths": { "anatomy": 5, "text_rendering": 2, "detail": 3 },
+      "avg_seconds_per_image": 180,
+      "notes": "Runs an automatic face/hand detection + inpaint pass after the base image, built specifically to fix contorted limbs and hands. Best default for scenes with multiple characters or close-up figures, and the top recommendation whenever feedback mentions anatomy."
+    },
+    "qwen_image_2512": {
+      "scene_type_scores": {
+        "landscape": 5,
+        "human_figures": 4,
+        "drama": 4,
+        "action": 3,
+        "text_heavy": 5,
+        "generic": 4
+      },
+      "complexity_scores": { "simple": 3, "moderate": 4, "complex": 5 },
+      "fix_strengths": { "anatomy": 2, "text_rendering": 5, "detail": 5 },
+      "avg_seconds_per_image": 450,
+      "notes": "Sharpest detail and the only engine that reliably renders legible in-image text (signs, letters, book pages). Slowest engine (6-9 min/image even with the Lightning LoRA) - reserve it for complex or text-heavy scenes rather than using it by default."
+    }
+  }
+}
