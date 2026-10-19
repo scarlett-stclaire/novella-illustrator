@@ -92,7 +92,15 @@ class UpdateCharacterRequest(BaseModel):
 
 
 class UpdateScenePromptRequest(BaseModel):
-    image_prompt: str
+    image_prompt: Optional[str] = None
+    summary: Optional[str] = None  # the chunk's display label ("rename", F11/F25)
+
+
+class SplitSceneRequest(BaseModel):
+    summary_a: str
+    image_prompt_a: str
+    summary_b: str
+    image_prompt_b: str
 
 
 class AddSceneRequest(BaseModel):

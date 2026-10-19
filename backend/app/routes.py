@@ -18,6 +18,7 @@ from .models import (
     SaveApiKeyRequest,
     Scene,
     SetDefaultProviderRequest,
+    SplitSceneRequest,
     UpdateCharacterRequest,
     UpdateScenePromptRequest,
 )
@@ -527,17 +528,113 @@ async def delete_scene(novella_id: str, scene_id: str):
 async def update_scene_prompt(
     novella_id: str, scene_id: str, payload: UpdateScenePromptRequest
 ):
+    fields = {k: v for k, v in payload.model_dump().items() if v is not None}
+    updated = storage.update_scene(novella_id, scene_id, **fields)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Novella or scene not found")
+    return updated
+
+
+@router.post("/novellas/{novella_id}/scenes/{scene_id}/move", response_model=Novella)
+async def move_scene(novella_id: str, scene_id: str, direction: str):
+    """Reorders one scene by one position (F11/F25 "reorder")."""
+    if direction not in ("up", "down"):
+        raise HTTPException(status_code=422, detail="direction must be 'up' or 'down'")
+
     novella = storage.load_novella(novella_id)
     if novella is None:
         raise HTTPException(status_code=404, detail="Novella not found")
 
-    for scene in novella.scenes:
-        if scene.id == scene_id:
-            scene.image_prompt = payload.image_prompt
-            storage.save_novella(novella)
-            return novella
+    scenes = list(novella.scenes)
+    pos = next((i for i, s in enumerate(scenes) if s.id == scene_id), None)
+    if pos is None:
+        raise HTTPException(status_code=404, detail="Scene not found")
 
-    raise HTTPException(status_code=404, detail="Scene not found")
+    target = pos - 1 if direction == "up" else pos + 1
+    if target < 0 or target >= len(scenes):
+        return novella  # already at the edge - no-op, not an error
+
+    scenes[pos], scenes[target] = scenes[target], scenes[pos]
+    for i, scene in enumerate(scenes):
+        scene.index = i
+
+    return storage.update_novella(novella_id, scenes=scenes)
+
+
+@router.post(
+    "/novellas/{novella_id}/scenes/{scene_id}/merge-next", response_model=Novella
+)
+async def merge_scene_with_next(novella_id: str, scene_id: str):
+    """Merges a scene with the one immediately after it (F11/F25 "merge").
+    The combined chunk keeps the first scene's id/image/engine and absorbs
+    the second scene's text; the second scene is removed."""
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+
+    scenes = list(novella.scenes)
+    pos = next((i for i, s in enumerate(scenes) if s.id == scene_id), None)
+    if pos is None:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    if pos + 1 >= len(scenes):
+        raise HTTPException(status_code=400, detail="No next scene to merge with")
+
+    first, second = scenes[pos], scenes[pos + 1]
+    first.summary = f"{first.summary} {second.summary}".strip()
+    first.image_prompt = f"{first.image_prompt}, {second.image_prompt}".strip(", ")
+    if first.source_excerpt and second.source_excerpt:
+        first.source_excerpt = f"{first.source_excerpt} {second.source_excerpt}"
+    scenes = [s for s in scenes if s.id != second.id]
+    for i, scene in enumerate(scenes):
+        scene.index = i
+
+    return storage.update_novella(novella_id, scenes=scenes)
+
+
+@router.post("/novellas/{novella_id}/scenes/{scene_id}/split", response_model=Novella)
+async def split_scene(novella_id: str, scene_id: str, payload: SplitSceneRequest):
+    """Replaces one scene with two, at the same position (F11/F25 "split")."""
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+
+    scenes = list(novella.scenes)
+    pos = next((i for i, s in enumerate(scenes) if s.id == scene_id), None)
+    if pos is None:
+        raise HTTPException(status_code=404, detail="Scene not found")
+
+    original = scenes[pos]
+    available = await recommend.get_available_engines()
+    comparison_a = recommend.compare_for_text(payload.image_prompt_a, available)
+    comparison_b = recommend.compare_for_text(payload.image_prompt_b, available)
+
+    scene_a = Scene(
+        id=str(uuid.uuid4()),
+        index=0,
+        summary=payload.summary_a,
+        image_prompt=payload.image_prompt_a,
+        source_excerpt=original.source_excerpt,
+        manual=True,
+        scene_type=comparison_a["scene_type"],
+        complexity=comparison_a["complexity"],
+        recommended_engine_id=comparison_a["recommended_engine_id"],
+    )
+    scene_b = Scene(
+        id=str(uuid.uuid4()),
+        index=0,
+        summary=payload.summary_b,
+        image_prompt=payload.image_prompt_b,
+        source_excerpt=original.source_excerpt,
+        manual=True,
+        scene_type=comparison_b["scene_type"],
+        complexity=comparison_b["complexity"],
+        recommended_engine_id=comparison_b["recommended_engine_id"],
+    )
+    scenes[pos : pos + 1] = [scene_a, scene_b]
+    for i, scene in enumerate(scenes):
+        scene.index = i
+
+    return storage.update_novella(novella_id, scenes=scenes)
 
 
 @router.get("/novellas/{novella_id}/scenes/{scene_id}/recommend")

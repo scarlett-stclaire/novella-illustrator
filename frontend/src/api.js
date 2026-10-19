@@ -150,4 +150,27 @@ export const api = {
     request(`/novellas/${novellaId}/characters/apply-to-scenes`, {
       method: "POST",
     }),
+  updateScene: (novellaId, sceneId, { summary, imagePrompt }) =>
+    request(`/novellas/${novellaId}/scenes/${sceneId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ summary, image_prompt: imagePrompt }),
+    }),
+  moveScene: (novellaId, sceneId, direction) =>
+    request(`/novellas/${novellaId}/scenes/${sceneId}/move?direction=${direction}`, {
+      method: "POST",
+    }),
+  mergeSceneNext: (novellaId, sceneId) =>
+    request(`/novellas/${novellaId}/scenes/${sceneId}/merge-next`, {
+      method: "POST",
+    }),
+  splitScene: (novellaId, sceneId, { summaryA, promptA, summaryB, promptB }) =>
+    request(`/novellas/${novellaId}/scenes/${sceneId}/split`, {
+      method: "POST",
+      body: JSON.stringify({
+        summary_a: summaryA,
+        image_prompt_a: promptA,
+        summary_b: summaryB,
+        image_prompt_b: promptB,
+      }),
+    }),
 };

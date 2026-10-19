@@ -6,6 +6,7 @@ import SourceCoverage from "./components/SourceCoverage.jsx";
 import NovellaHome from "./components/NovellaHome.jsx";
 import Settings from "./components/Settings.jsx";
 import Characters from "./components/Characters.jsx";
+import MindMap from "./components/MindMap.jsx";
 
 function navigate(path) {
   window.history.pushState({}, "", path);
@@ -29,6 +30,7 @@ export default function App() {
   const [health, setHealth] = useState(null);
   const [showCoverage, setShowCoverage] = useState(false);
   const [showCharacters, setShowCharacters] = useState(false);
+  const [showMindMap, setShowMindMap] = useState(false);
   const [showCostPerf, setShowCostPerf] = useState(false);
   const [costPerf, setCostPerf] = useState(null);
   const [engines, setEngines] = useState([]);
@@ -310,6 +312,13 @@ export default function App() {
               onUpdate={setNovella}
             />
           )}
+
+          {novella.scenes.length > 0 && (
+            <button onClick={() => setShowMindMap((v) => !v)}>
+              {showMindMap ? "Hide mind map" : "Show mind map"}
+            </button>
+          )}
+          {showMindMap && <MindMap novella={novella} onUpdate={setNovella} />}
 
           <SceneList
             novellaId={novella.id}
