@@ -1,5 +1,12 @@
 import { useState } from "react";
 import { api } from "../api.js";
+import Panel, { SCENE_TYPE_TO_ROOM } from "./Panel.jsx";
+
+const GHOST_LABEL = {
+  pending: "PENDING",
+  generating: "DRAWING…",
+  error: "FAILED",
+};
 
 export default function SceneCard({
   novellaId,
@@ -22,6 +29,7 @@ export default function SceneCard({
   const [recommending, setRecommending] = useState(false);
 
   const recommendedEngine = engines?.find((e) => e.id === scene.recommended_engine_id);
+  const room = SCENE_TYPE_TO_ROOM[scene.scene_type] || "spires";
 
   async function handleSave() {
     setSaving(true);
@@ -93,6 +101,15 @@ export default function SceneCard({
           </span>
         )}
       </div>
+
+      <Panel
+        scene={room}
+        image={scene.image_path}
+        alt={scene.summary}
+        caption={scene.image_path ? scene.summary : undefined}
+        ghostLabel={!scene.image_path ? GHOST_LABEL[scene.status] || "PENDING" : undefined}
+      />
+
       <p className="scene-summary">{scene.summary}</p>
       {recommendedEngine && (
         <p className="scene-recommendation">
@@ -136,7 +153,6 @@ export default function SceneCard({
       {scene.error && <p className="scene-error">{scene.error}</p>}
       {scene.image_path && (
         <>
-          <img className="scene-image" src={scene.image_path} alt={scene.summary} />
           {scene.engine_id && (
             <p className="scene-engine-note">
               made with:{" "}

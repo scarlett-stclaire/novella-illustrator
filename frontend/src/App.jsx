@@ -176,23 +176,28 @@ export default function App() {
 
   return (
     <div className="app">
-      <h1>
-        <button className="home-link" onClick={() => navigate("/")}>
-          Novella Illustrator
+      <nav className="app-nav">
+        <button className="home-link wordmark" onClick={() => navigate("/")}>
+          <span className="wordmark-script">Novella</span>
+          <span className="wordmark-sans">Illustrator</span>
         </button>
-        <button className="home-link settings-link" onClick={() => navigate("/settings")}>
-          Settings
-        </button>
-      </h1>
-      {health && (
-        <p className="health">
-          LLM: {health.ollama ? "ready" : "unavailable"} · Image gen:{" "}
-          {health.comfyui ? "ready" : "unavailable"}
-        </p>
-      )}
-      {error && <p className="error">{error}</p>}
+        <div className="nav-links">
+          <button className="home-link settings-link" onClick={() => navigate("/settings")}>
+            Settings
+          </button>
+        </div>
+      </nav>
 
-      {isSettingsRoute && <Settings />}
+      <div className="app-content">
+        {health && (
+          <p className="health">
+            LLM: {health.ollama ? "ready" : "unavailable"} · Image gen:{" "}
+            {health.comfyui ? "ready" : "unavailable"}
+          </p>
+        )}
+        {error && <p className="error">{error}</p>}
+
+        {isSettingsRoute && <Settings />}
 
       {!isSettingsRoute && !novellaId && (
         <>
@@ -295,6 +300,7 @@ export default function App() {
           />
         </>
       )}
+      </div>
     </div>
   );
 }
