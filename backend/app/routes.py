@@ -4,9 +4,11 @@ from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from . import catalogue, ingest, llm, imagegen, providers, recommend, settings_store, storage
+from . import catalogue, characters_llm, ingest, llm, imagegen, providers, recommend, settings_store, storage
 from .models import (
+    AddCharacterRequest,
     AddSceneRequest,
+    Character,
     CreateNovellaRequest,
     IngestUrlsRequest,
     Novella,
@@ -16,6 +18,7 @@ from .models import (
     SaveApiKeyRequest,
     Scene,
     SetDefaultProviderRequest,
+    UpdateCharacterRequest,
     UpdateScenePromptRequest,
 )
 
@@ -233,6 +236,241 @@ async def _run_breakdown(
         storage.update_novella(
             novella_id, status="error", breakdown_error=str(exc), breakdown_progress=None
         )
+
+
+@router.post("/novellas/{novella_id}/characters/extract", response_model=Novella)
+async def extract_characters(novella_id: str, text_provider_id: Optional[str] = None):
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+
+    if text_provider_id is not None and text_provider_id not in providers.PROVIDER_REGISTRY:
+        raise HTTPException(status_code=404, detail="Unknown text provider")
+
+    novella = storage.update_novella(
+        novella_id, character_status="extracting", character_error=None
+    )
+    asyncio.create_task(
+        _run_character_extraction(novella_id, novella.text, text_provider_id)
+    )
+    return novella
+
+
+async def _run_character_extraction(
+    novella_id: str, text: str, text_provider_id: Optional[str]
+) -> None:
+    try:
+        provider = (
+            providers.get_provider(text_provider_id)
+            if text_provider_id
+            else providers.resolve_default_provider()
+        )
+        raw_characters = await characters_llm.extract_characters(text, provider)
+
+        current = storage.load_novella(novella_id)
+        if current is None:
+            return
+        existing_by_name = {c.name.lower(): c for c in current.characters}
+
+        merged: list[Character] = []
+        for item in raw_characters:
+            key = item["name"].lower()
+            if key in existing_by_name:
+                # Already extracted (or added by hand) - keep the existing
+                # record untouched so any image/edits the user made survive
+                # a re-extraction.
+                merged.append(existing_by_name[key])
+            else:
+                merged.append(Character(id=str(uuid.uuid4()), **item))
+
+        storage.update_novella(
+            novella_id, characters=merged, character_status="ready"
+        )
+    except Exception as exc:  # noqa: BLE001
+        storage.update_novella(
+            novella_id, character_status="error", character_error=str(exc)
+        )
+
+
+@router.post("/novellas/{novella_id}/characters", response_model=Novella)
+async def add_character(novella_id: str, payload: AddCharacterRequest):
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+
+    new_character = Character(
+        id=str(uuid.uuid4()),
+        name=payload.name,
+        synopsis=payload.synopsis,
+        visual_description=payload.visual_description,
+        manual=True,
+    )
+    return storage.update_novella(
+        novella_id, characters=novella.characters + [new_character]
+    )
+
+
+@router.patch("/novellas/{novella_id}/characters/{character_id}", response_model=Novella)
+async def update_character(
+    novella_id: str, character_id: str, payload: UpdateCharacterRequest
+):
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+
+    fields = {k: v for k, v in payload.model_dump().items() if v is not None}
+    updated = storage.update_character(novella_id, character_id, **fields)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Character not found")
+    return updated
+
+
+@router.delete("/novellas/{novella_id}/characters/{character_id}", response_model=Novella)
+async def delete_character(novella_id: str, character_id: str):
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+
+    characters = [c for c in novella.characters if c.id != character_id]
+    if len(characters) == len(novella.characters):
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    return storage.update_novella(novella_id, characters=characters)
+
+
+@router.post(
+    "/novellas/{novella_id}/characters/{character_id}/image/upload",
+    response_model=Novella,
+)
+async def upload_character_image(
+    novella_id: str, character_id: str, file: UploadFile = File(...)
+):
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+    if not any(c.id == character_id for c in novella.characters):
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=422, detail="File must be an image")
+
+    ext = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}.get(
+        file.content_type, ".png"
+    )
+    image_dir = storage.novella_image_dir(novella_id)
+    output_path = image_dir / f"character_{character_id}{ext}"
+    output_path.write_bytes(await file.read())
+
+    updated = storage.update_character(
+        novella_id,
+        character_id,
+        image_path=f"/api/images/{novella_id}/character_{character_id}{ext}",
+        status="ready",
+        error=None,
+        engine_id=None,
+    )
+    return updated
+
+
+@router.post(
+    "/novellas/{novella_id}/characters/{character_id}/image/generate",
+    response_model=Novella,
+)
+async def generate_character_image(
+    novella_id: str, character_id: str, engine_id: Optional[str] = None
+):
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+
+    character = next((c for c in novella.characters if c.id == character_id), None)
+    if character is None:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    details = character.visual_description or character.synopsis
+    prompt = (
+        f"Character portrait of {character.name}: {details}, "
+        f"plain neutral background, {llm.STYLE_HINT}"
+    )
+    effective_engine_id = (
+        engine_id or novella.recommended_engine_id or imagegen.DEFAULT_ENGINE_ID
+    )
+
+    updated = storage.update_character(
+        novella_id, character_id, status="generating", error=None, progress=None
+    )
+    asyncio.create_task(
+        _run_character_generation(novella_id, character_id, prompt, effective_engine_id)
+    )
+    return updated
+
+
+async def _run_character_generation(
+    novella_id: str, character_id: str, prompt: str, engine_id: str
+) -> None:
+    image_dir = storage.novella_image_dir(novella_id)
+    output_path = image_dir / f"character_{character_id}.png"
+
+    async def on_progress(value: int, max_value: int) -> None:
+        storage.update_character(
+            novella_id, character_id, progress=Progress(value=value, max=max_value)
+        )
+
+    try:
+        await imagegen.generate_image(
+            prompt, output_path, engine_id=engine_id, on_progress=on_progress
+        )
+        storage.update_character(
+            novella_id,
+            character_id,
+            status="ready",
+            image_path=f"/api/images/{novella_id}/character_{character_id}.png",
+            progress=None,
+            engine_id=engine_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        storage.update_character(
+            novella_id, character_id, status="error", error=str(exc), progress=None
+        )
+
+
+@router.post("/novellas/{novella_id}/characters/apply-to-scenes", response_model=Novella)
+async def apply_characters_to_scenes(novella_id: str):
+    """Locks each character's visual_description into the prompt of every
+    scene that mentions them by name (F14, practical v1 - see note below).
+
+    This is a text-prompt consistency aid, not true image-conditioning: it
+    keeps hair/costume/build details worded the same way across scenes so
+    the model is nudged toward a consistent look, but it cannot guarantee
+    pixel-level facial consistency the way an IPAdapter/reference-image
+    pipeline would. That's flagged in the implementation plan as a separate,
+    larger piece of work (new ComfyUI custom node + CLIP vision + per-engine
+    IPAdapter weights - a real download/disk-space commitment), not
+    attempted here.
+    """
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+
+    locked_characters = [c for c in novella.characters if c.visual_description]
+    if not locked_characters:
+        return novella
+
+    updated_scenes = []
+    for scene in novella.scenes:
+        haystack = (
+            f"{scene.summary} {scene.image_prompt} {scene.source_excerpt or ''}"
+        ).lower()
+        present = [c for c in locked_characters if c.name.lower() in haystack]
+        if present:
+            lock_text = "; ".join(
+                f"{c.name}: {c.visual_description}" for c in present
+            )
+            if lock_text not in scene.image_prompt:
+                scene.image_prompt = f"{scene.image_prompt}, {lock_text}"
+        updated_scenes.append(scene)
+
+    return storage.update_novella(novella_id, scenes=updated_scenes)
 
 
 @router.post("/novellas/{novella_id}/scenes", response_model=Novella)

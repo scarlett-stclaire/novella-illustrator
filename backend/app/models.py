@@ -26,6 +26,22 @@ class Scene(BaseModel):
     recommended_engine_id: Optional[str] = None  # best-fit engine per capability profile
 
 
+class Character(BaseModel):
+    id: str
+    name: str
+    synopsis: str = ""  # narrative role, shown in the character list (F12)
+    visual_description: str = ""  # physical/costume details only - locked into
+    # scene prompts for appearance consistency (F14); kept separate from
+    # synopsis so plot/personality text never leaks into an image prompt
+    image_path: Optional[str] = None
+    source_excerpt: Optional[str] = None
+    manual: bool = False  # True for characters added by hand, not by the LLM
+    status: str = "ready"  # ready | generating | error (image generation)
+    error: Optional[str] = None
+    progress: Optional[Progress] = None
+    engine_id: Optional[str] = None  # which image-gen engine made the current image
+
+
 class Novella(BaseModel):
     id: str
     title: str
@@ -39,6 +55,9 @@ class Novella(BaseModel):
     scene_type: Optional[str] = None  # story-level heuristic classification (F9)
     complexity: Optional[str] = None  # story-level heuristic classification (F9)
     recommended_engine_id: Optional[str] = None  # story-level best-fit engine
+    characters: list[Character] = []
+    character_status: str = "none"  # none | extracting | ready | error
+    character_error: Optional[str] = None
     created_at: float = Field(default_factory=time.time)
 
 
@@ -58,6 +77,18 @@ class SetDefaultProviderRequest(BaseModel):
 
 class IngestUrlsRequest(BaseModel):
     urls: list[str]
+
+
+class AddCharacterRequest(BaseModel):
+    name: str
+    synopsis: str = ""
+    visual_description: str = ""
+
+
+class UpdateCharacterRequest(BaseModel):
+    name: Optional[str] = None
+    synopsis: Optional[str] = None
+    visual_description: Optional[str] = None
 
 
 class UpdateScenePromptRequest(BaseModel):

@@ -5,6 +5,7 @@ import SceneList from "./components/SceneList.jsx";
 import SourceCoverage from "./components/SourceCoverage.jsx";
 import NovellaHome from "./components/NovellaHome.jsx";
 import Settings from "./components/Settings.jsx";
+import Characters from "./components/Characters.jsx";
 
 function navigate(path) {
   window.history.pushState({}, "", path);
@@ -27,6 +28,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [health, setHealth] = useState(null);
   const [showCoverage, setShowCoverage] = useState(false);
+  const [showCharacters, setShowCharacters] = useState(false);
   const [showCostPerf, setShowCostPerf] = useState(false);
   const [costPerf, setCostPerf] = useState(null);
   const [engines, setEngines] = useState([]);
@@ -75,9 +77,16 @@ export default function App() {
 
   const anyGenerating = novella?.scenes.some((s) => s.status === "generating") ?? false;
   const breakingDown = novella?.status === "breaking_down";
+  const extractingCharacters = novella?.character_status === "extracting";
+  const anyCharacterGenerating =
+    novella?.characters?.some((c) => c.status === "generating") ?? false;
 
   useEffect(() => {
-    if (!novella || (!anyGenerating && !breakingDown)) return;
+    if (
+      !novella ||
+      (!anyGenerating && !breakingDown && !extractingCharacters && !anyCharacterGenerating)
+    )
+      return;
     const interval = setInterval(async () => {
       try {
         const updated = await api.getNovella(novella.id);
@@ -88,7 +97,7 @@ export default function App() {
     }, 1000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [novella?.id, anyGenerating, breakingDown]);
+  }, [novella?.id, anyGenerating, breakingDown, extractingCharacters, anyCharacterGenerating]);
 
   async function handleCreate(title, text, targetSceneCount, textProviderId) {
     setBusy(true);
@@ -286,6 +295,20 @@ export default function App() {
           )}
           {showCoverage && (
             <SourceCoverage text={novella.text} scenes={novella.scenes} />
+          )}
+
+          <button onClick={() => setShowCharacters((v) => !v)}>
+            {showCharacters ? "Hide characters" : "Characters"}
+            {novella.characters?.length > 0 ? ` (${novella.characters.length})` : ""}
+          </button>
+          {showCharacters && (
+            <Characters
+              novella={novella}
+              engines={engines}
+              textProviders={textProviders}
+              defaultTextProviderId={defaultTextProviderId}
+              onUpdate={setNovella}
+            />
           )}
 
           <SceneList

@@ -59,6 +59,23 @@ def update_novella(novella_id: str, **fields) -> Novella | None:
         return novella
 
 
+def update_character(novella_id: str, character_id: str, **fields) -> Novella | None:
+    """Atomically read-modify-write a single character's fields - same
+    rationale as update_scene (concurrent background image generation)."""
+    with _lock:
+        path = _novella_path(novella_id)
+        if not path.exists():
+            return None
+        novella = Novella.model_validate_json(path.read_text())
+        for character in novella.characters:
+            if character.id == character_id:
+                for key, value in fields.items():
+                    setattr(character, key, value)
+                path.write_text(novella.model_dump_json(indent=2))
+                return novella
+        return None
+
+
 def update_scene(novella_id: str, scene_id: str, **fields) -> Novella | None:
     """Atomically read-modify-write a single scene's fields.
 

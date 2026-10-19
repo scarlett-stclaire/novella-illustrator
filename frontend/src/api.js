@@ -100,4 +100,54 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ provider_id: providerId || null }),
     }),
+  extractCharacters: (novellaId, textProviderId) =>
+    request(
+      `/novellas/${novellaId}/characters/extract${
+        textProviderId
+          ? `?text_provider_id=${encodeURIComponent(textProviderId)}`
+          : ""
+      }`,
+      { method: "POST" }
+    ),
+  addCharacter: (novellaId, { name, synopsis, visualDescription }) =>
+    request(`/novellas/${novellaId}/characters`, {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        synopsis: synopsis || "",
+        visual_description: visualDescription || "",
+      }),
+    }),
+  updateCharacter: (novellaId, characterId, fields) =>
+    request(`/novellas/${novellaId}/characters/${characterId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        name: fields.name,
+        synopsis: fields.synopsis,
+        visual_description: fields.visualDescription,
+      }),
+    }),
+  deleteCharacter: (novellaId, characterId) =>
+    request(`/novellas/${novellaId}/characters/${characterId}`, {
+      method: "DELETE",
+    }),
+  uploadCharacterImage: (novellaId, characterId, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return requestForm(
+      `/novellas/${novellaId}/characters/${characterId}/image/upload`,
+      formData
+    );
+  },
+  generateCharacterImage: (novellaId, characterId, engineId) =>
+    request(
+      `/novellas/${novellaId}/characters/${characterId}/image/generate${
+        engineId ? `?engine_id=${encodeURIComponent(engineId)}` : ""
+      }`,
+      { method: "POST" }
+    ),
+  applyCharactersToScenes: (novellaId) =>
+    request(`/novellas/${novellaId}/characters/apply-to-scenes`, {
+      method: "POST",
+    }),
 };

@@ -329,6 +329,48 @@ h2 {
 }
 
 /* ==========================================================================
+   Characters (F12-F14)
+   ========================================================================== */
+.characters-section {
+  margin: var(--sp-6) 0;
+  background: var(--cream-dark);
+  border: 1px solid var(--hairline-light);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-5);
+}
+
+.characters-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+
+.characters-header h2 {
+  margin: 0;
+}
+
+.characters-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.character-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--sp-4);
+  margin: var(--sp-4) 0;
+}
+
+.character-card {
+  background: var(--white);
+}
+
+/* ==========================================================================
    Buttons — rose pill primary
    ========================================================================== */
 button {
