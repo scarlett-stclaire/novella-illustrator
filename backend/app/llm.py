@@ -4,9 +4,27 @@ import re
 from typing import Awaitable, Callable, Optional
 
 import httpx
+from pydantic import BaseModel, Field, ValidationError
 
 from . import providers
 from .providers import TextProvider
+
+
+class SceneChunk(BaseModel):
+    summary: str
+    image_prompt: str = Field(
+        description=(
+            "Vivid, highly-descriptive visual/cinematic prompt (setting, "
+            "characters, action, mood, lighting) for a diffusion model"
+        )
+    )
+    source_excerpt: str = Field(
+        description="Exact verbatim substring of the input text where this scene occurs"
+    )
+
+
+class SceneBreakdown(BaseModel):
+    scenes: list[SceneChunk]
 
 OLLAMA_BASE_URL = providers.OLLAMA_BASE_URL
 OLLAMA_MODEL = providers.OLLAMA_MODEL
@@ -27,7 +45,8 @@ CHUNK_CHAR_LIMIT = 6000
 SYSTEM_PROMPT = """You are a visual adaptation scriptwriter. You read story text \
 and break it into a sequence of illustratable scenes/panels.
 
-For the given passage, output a JSON array. Each element must be an object with:
+For the given passage, output a JSON object with a "scenes" array. Each element \
+must be an object with:
 - "summary": a one or two sentence description of what happens in the scene.
 - "image_prompt": a single, highly descriptive, visual prompt suitable for feeding \
 directly into an image generation model. Describe setting, characters, action, \
@@ -37,7 +56,7 @@ for character, no paraphrasing) from the passage that this scene is drawn from. 
 It must be an exact substring of the passage - used later to locate the scene in \
 the original text.
 
-Return ONLY the JSON array, with no markdown fences and no extra commentary."""
+Return ONLY the JSON object, with no markdown fences and no extra commentary."""
 
 
 def _chunk_text(text: str) -> list[str]:
@@ -55,19 +74,26 @@ def _chunk_text(text: str) -> list[str]:
 
 
 def _extract_json_array(raw: str) -> list:
+    """Best-effort fallback parser, used when a provider doesn't enforce the
+    SceneBreakdown/CharacterList schema (frontier providers today) and its
+    response doesn't validate cleanly against it."""
     raw = raw.strip()
     raw = re.sub(r"^```(json)?", "", raw).strip()
     raw = re.sub(r"```$", "", raw).strip()
 
-    # Ollama's format="json" only guarantees *some* valid JSON value, not
-    # specifically an array - a single-scene chunk sometimes comes back as
-    # one bare object instead of a one-element array.
     try:
         parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            return [parsed]
         if isinstance(parsed, list):
             return parsed
+        if isinstance(parsed, dict):
+            # Expected shape ({"scenes": [...]} / {"characters": [...]}) -
+            # unwrap the one list-valued key rather than guessing its name.
+            list_values = [v for v in parsed.values() if isinstance(v, list)]
+            if len(list_values) == 1:
+                return list_values[0]
+            # Not that shape either - a single-item response sometimes comes
+            # back as one bare object instead of a one-element array.
+            return [parsed]
     except json.JSONDecodeError:
         pass
 
@@ -76,6 +102,18 @@ def _extract_json_array(raw: str) -> list:
     if start == -1 or end == -1:
         raise ValueError(f"No JSON array found in LLM response: {raw[:200]}")
     return json.loads(raw[start : end + 1])
+
+
+def _parse_structured(content: str, schema: type[BaseModel], list_field: str) -> list[dict]:
+    """Validates `content` against `schema` (the strong path - holds for
+    Ollama, which actually enforces the schema) and returns the list field
+    as plain dicts. Falls back to the loose extractor for providers that
+    don't enforce schemas and returned something that doesn't quite match."""
+    try:
+        validated = schema.model_validate_json(content)
+        return [item.model_dump() for item in getattr(validated, list_field)]
+    except ValidationError:
+        return _extract_json_array(content)
 
 
 async def breakdown_into_scenes(
@@ -102,9 +140,11 @@ async def breakdown_into_scenes(
                 f"from the passage below.)\n\n{chunk}"
             )
 
-        content = await provider.chat(SYSTEM_PROMPT, user_content, json_mode=True)
+        content = await provider.chat(
+            SYSTEM_PROMPT, user_content, json_mode=True, response_schema=SceneBreakdown
+        )
 
-        parsed = _extract_json_array(content)
+        parsed = _parse_structured(content, SceneBreakdown, "scenes")
         new_scenes = [
             {
                 "summary": item.get("summary", ""),

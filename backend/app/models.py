@@ -29,12 +29,15 @@ class Scene(BaseModel):
 class Character(BaseModel):
     id: str
     name: str
+    aliases: list[str] = []  # other name variants merged into this character
+    # (e.g. "Bill"/"Mr. Bennett" merged under "Bill Bennett") - see
+    # entity_resolution.py. `name` is always the longest raw variant seen.
     synopsis: str = ""  # narrative role, shown in the character list (F12)
     visual_description: str = ""  # physical/costume details only - locked into
     # scene prompts for appearance consistency (F14); kept separate from
     # synopsis so plot/personality text never leaks into an image prompt
     image_path: Optional[str] = None
-    source_excerpt: Optional[str] = None
+    source_excerpts: list[str] = []
     manual: bool = False  # True for characters added by hand, not by the LLM
     status: str = "ready"  # ready | generating | error (image generation)
     error: Optional[str] = None
@@ -83,6 +86,11 @@ class SetEnabledEnginesRequest(BaseModel):
 class SetStorageRootRequest(BaseModel):
     # None/empty resets to the default backend/data location.
     path: Optional[str] = None
+
+
+class SetOllamaModelRequest(BaseModel):
+    # None/empty resets to OLLAMA_MODEL from .env.
+    model: Optional[str] = None
 
 
 class IngestUrlsRequest(BaseModel):

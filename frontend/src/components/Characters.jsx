@@ -241,6 +241,9 @@ function CharacterCard({ novellaId, character, engines, onUpdate }) {
         </span>
         {character.manual && <span className="status status-manual">manual</span>}
       </div>
+      {character.aliases?.length > 0 && (
+        <p className="character-aliases">also called: {character.aliases.join(", ")}</p>
+      )}
 
       <Panel
         scene="candle"

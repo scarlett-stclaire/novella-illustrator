@@ -1,13 +1,19 @@
 """LLM-driven character extraction (F12), reusing llm.py's chunking/JSON
-helpers so long stories are processed the same way scene breakdown is."""
+helpers so long stories are processed the same way scene breakdown is.
+Name-variant merging (F12) is a separate, deterministic step - see
+entity_resolution.py - not an LLM task."""
 
-from .llm import _chunk_text, _extract_json_array
+from pydantic import BaseModel, Field
+
+from .entity_resolution import merge_characters
+from .llm import _chunk_text, _parse_structured
 from .providers import TextProvider
 
 SYSTEM_PROMPT = """You are a literary analyst identifying named characters in a \
 story passage.
 
-For the given passage, output a JSON array. Each element must be an object with:
+For the given passage, output a JSON object with a "characters" array. Each \
+element must be an object with:
 - "name": the character's name as it appears in the text.
 - "synopsis": a one or two sentence description of who they are and their role \
 in the story.
@@ -23,44 +29,36 @@ It must be an exact substring of the passage.
 Only include named individual characters (not crowds or groups, not an unnamed \
 narrator). If a character appears in this passage but you've likely already \
 described them in an earlier passage, include them again anyway - duplicates \
-across passages are merged automatically afterward.
+across passages (and name variants like nicknames or titles) are merged \
+automatically afterward.
 
-Return ONLY the JSON array, with no markdown fences and no extra commentary. If \
-no named characters appear in this passage, return an empty array."""
+Return ONLY the JSON object, with no markdown fences and no extra commentary. If \
+no named characters appear in this passage, return an empty "characters" array."""
 
 
-def _merge_characters(raw_items: list[dict]) -> list[dict]:
-    merged: dict[str, dict] = {}
-    order: list[str] = []
-    for item in raw_items:
-        name = (item.get("name") or "").strip()
-        if not name:
-            continue
-        key = name.lower()
-        if key not in merged:
-            merged[key] = {
-                "name": name,
-                "synopsis": item.get("synopsis") or "",
-                "visual_description": item.get("visual_description") or "",
-                "source_excerpt": item.get("source_excerpt") or None,
-            }
-            order.append(key)
-        else:
-            existing = merged[key]
-            if not existing["synopsis"] and item.get("synopsis"):
-                existing["synopsis"] = item["synopsis"]
-            if not existing["visual_description"] and item.get("visual_description"):
-                existing["visual_description"] = item["visual_description"]
-            if not existing["source_excerpt"] and item.get("source_excerpt"):
-                existing["source_excerpt"] = item["source_excerpt"]
-    return [merged[key] for key in order]
+class ExtractedCharacter(BaseModel):
+    name: str
+    synopsis: str = Field(description="Personality and plot relevance")
+    visual_description: str = Field(
+        description=(
+            "Physical and costume description. Must be an empty string if "
+            "not explicitly described in the text."
+        )
+    )
+    source_excerpt: str = Field(description="Exact verbatim substring")
+
+
+class CharacterList(BaseModel):
+    characters: list[ExtractedCharacter]
 
 
 async def extract_characters(text: str, provider: TextProvider) -> list[dict]:
     chunks = _chunk_text(text)
     raw_items: list[dict] = []
     for chunk in chunks:
-        content = await provider.chat(SYSTEM_PROMPT, chunk, json_mode=True)
-        parsed = _extract_json_array(content)
+        content = await provider.chat(
+            SYSTEM_PROMPT, chunk, json_mode=True, response_schema=CharacterList
+        )
+        parsed = _parse_structured(content, CharacterList, "characters")
         raw_items.extend(parsed)
-    return _merge_characters(raw_items)
+    return merge_characters(raw_items)

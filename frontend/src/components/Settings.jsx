@@ -14,20 +14,27 @@ export default function Settings() {
   const [storageInfo, setStorageInfo] = useState(null);
   const [storagePathInput, setStoragePathInput] = useState("");
   const [storageBusy, setStorageBusy] = useState(false);
+  const [ollamaModels, setOllamaModels] = useState([]);
+  const [selectedOllamaModel, setSelectedOllamaModel] = useState("");
+  const [ollamaModelBusy, setOllamaModelBusy] = useState(false);
 
   async function refresh() {
-    const [providersData, catalogueData, enginesData, storageData] = await Promise.all([
-      api.listTextProviders(),
-      api.listCatalogue(),
-      api.listSettingsEngines(),
-      api.getStorageSettings(),
-    ]);
+    const [providersData, catalogueData, enginesData, storageData, ollamaModelsData] =
+      await Promise.all([
+        api.listTextProviders(),
+        api.listCatalogue(),
+        api.listSettingsEngines(),
+        api.getStorageSettings(),
+        api.listOllamaModels(),
+      ]);
     setProviders(providersData.providers);
     setDefaultProviderId(providersData.default_provider_id);
     setCatalogue(catalogueData.models);
     setEngines(enginesData.engines);
     setStorageInfo(storageData);
     setStoragePathInput(storageData.saved_override || "");
+    setOllamaModels(ollamaModelsData.models);
+    setSelectedOllamaModel(ollamaModelsData.selected);
   }
 
   useEffect(() => {
@@ -106,6 +113,19 @@ export default function Settings() {
       setError(err.message);
     } finally {
       setStorageBusy(false);
+    }
+  }
+
+  async function handleSelectOllamaModel(model) {
+    setOllamaModelBusy(true);
+    setError(null);
+    try {
+      await api.setOllamaModel(model);
+      setSelectedOllamaModel(model);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setOllamaModelBusy(false);
     }
   }
 
@@ -199,6 +219,29 @@ export default function Settings() {
                     </button>
                   </>
                 )}
+              </div>
+            )}
+
+            {p.id === "ollama" && (
+              <div className="provider-key-row">
+                <select
+                  value={selectedOllamaModel}
+                  disabled={ollamaModelBusy || ollamaModels.length === 0}
+                  onChange={(e) => handleSelectOllamaModel(e.target.value)}
+                >
+                  {ollamaModels.length === 0 && <option>No models installed</option>}
+                  {ollamaModels.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {m.name}
+                      {m.size_bytes
+                        ? ` (${(m.size_bytes / 1e9).toFixed(1)} GB)`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+                <span className="settings-note" style={{ margin: 0 }}>
+                  used for story breakdown and character extraction
+                </span>
               </div>
             )}
           </div>

@@ -21,6 +21,7 @@ from .models import (
     Scene,
     SetDefaultProviderRequest,
     SetEnabledEnginesRequest,
+    SetOllamaModelRequest,
     SetStorageRootRequest,
     SplitSceneRequest,
     UpdateCharacterRequest,
@@ -48,6 +49,17 @@ async def get_text_providers():
         "providers": await providers.list_providers(),
         "default_provider_id": providers.resolve_default_provider().id,
     }
+
+
+@router.get("/settings/ollama-models")
+async def get_ollama_models():
+    return await providers.list_ollama_models()
+
+
+@router.post("/settings/ollama-model")
+async def set_ollama_model(payload: SetOllamaModelRequest):
+    settings_store.set_ollama_model(payload.model or None)
+    return {"ok": True}
 
 
 @router.post("/settings/providers/{provider_id}/key")

@@ -11,3 +11,4 @@ trafilatura==2.3.1
 reportlab==5.0.1
 ebooklib==0.20
 pillow==13.0.0
+pytest==8.3.3

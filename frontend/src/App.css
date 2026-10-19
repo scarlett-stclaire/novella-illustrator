@@ -612,6 +612,13 @@ select {
   margin: 0;
 }
 
+.character-aliases {
+  color: var(--gray);
+  font-size: 12px;
+  font-style: italic;
+  margin: 0;
+}
+
 .scene-actions {
   display: flex;
   align-items: center;

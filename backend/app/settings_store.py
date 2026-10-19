@@ -27,12 +27,14 @@ def _read() -> dict:
             "default_text_provider": None,
             "enabled_engine_ids": None,
             "storage_root": None,
+            "ollama_model": None,
         }
     data = json.loads(SETTINGS_PATH.read_text())
     data.setdefault("api_keys", {})
     data.setdefault("default_text_provider", None)
     data.setdefault("enabled_engine_ids", None)
     data.setdefault("storage_root", None)
+    data.setdefault("ollama_model", None)
     return data
 
 
@@ -111,4 +113,19 @@ def set_storage_root(path: Optional[str]) -> None:
     with _lock:
         data = _read()
         data["storage_root"] = path
+        _write(data)
+
+
+def get_ollama_model() -> Optional[str]:
+    """None means "use OLLAMA_MODEL from .env" (the original hardcoded
+    default) - story breakdown and character extraction both read this to
+    pick which locally-installed Ollama model actually does the work."""
+    with _lock:
+        return _read()["ollama_model"]
+
+
+def set_ollama_model(model: Optional[str]) -> None:
+    with _lock:
+        data = _read()
+        data["ollama_model"] = model
         _write(data)

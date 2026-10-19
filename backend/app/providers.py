@@ -8,8 +8,10 @@ run against the local Ollama model or a frontier API key interchangeably.
 import abc
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 import httpx
+from pydantic import BaseModel
 
 from . import settings_store
 
@@ -30,8 +32,20 @@ class TextProvider(abc.ABC):
         """Whether this provider is currently usable (reachable / has a key)."""
 
     @abc.abstractmethod
-    async def chat(self, system: str, user: str, *, json_mode: bool = False) -> str:
-        """Send a single system+user turn, return the raw text response."""
+    async def chat(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        response_schema: Optional[type[BaseModel]] = None,
+    ) -> str:
+        """Send a single system+user turn, return the raw text response.
+
+        response_schema, when given, asks the provider to constrain its
+        output to that exact JSON shape (stronger than json_mode's "valid
+        JSON, any shape"). Not every provider can actually enforce this -
+        see each implementation's docstring."""
 
 
 class OllamaProvider(TextProvider):
@@ -51,7 +65,18 @@ class OllamaProvider(TextProvider):
         except httpx.HTTPError:
             return False
 
-    async def chat(self, system: str, user: str, *, json_mode: bool = False) -> str:
+    async def chat(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        response_schema: Optional[type[BaseModel]] = None,
+    ) -> str:
+        """Ollama's `format` field accepts either the string "json" (valid
+        JSON, any shape) or a full JSON Schema object (output constrained to
+        match it exactly) - response_schema uses the latter, a much
+        stronger guarantee than json_mode alone."""
         async with httpx.AsyncClient(timeout=300) as client:
             payload = {
                 "model": self.model,
@@ -61,7 +86,9 @@ class OllamaProvider(TextProvider):
                 ],
                 "stream": False,
             }
-            if json_mode:
+            if response_schema is not None:
+                payload["format"] = response_schema.model_json_schema()
+            elif json_mode:
                 payload["format"] = "json"
             response = await client.post(f"{self.base_url}/api/chat", json=payload)
             response.raise_for_status()
@@ -80,7 +107,19 @@ class AnthropicProvider(TextProvider):
     async def is_available(self) -> bool:
         return bool(self.api_key)
 
-    async def chat(self, system: str, user: str, *, json_mode: bool = False) -> str:
+    async def chat(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        response_schema: Optional[type[BaseModel]] = None,
+    ) -> str:
+        # response_schema isn't enforced here yet - Claude's structured-output
+        # support needs verifying against current API docs before wiring up
+        # (tool-use forcing or output_config/format), not guessing the shape.
+        # Falls back to the existing free-form JSON instruction either way;
+        # llm.py/characters_llm.py already validate+retry defensively.
         import anthropic
 
         client = anthropic.AsyncAnthropic(api_key=self.api_key)
@@ -105,12 +144,28 @@ class OpenAIProvider(TextProvider):
     async def is_available(self) -> bool:
         return bool(self.api_key)
 
-    async def chat(self, system: str, user: str, *, json_mode: bool = False) -> str:
+    async def chat(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        response_schema: Optional[type[BaseModel]] = None,
+    ) -> str:
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=self.api_key)
         kwargs = {}
-        if json_mode:
+        if response_schema is not None:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": response_schema.__name__,
+                    "schema": response_schema.model_json_schema(),
+                    "strict": True,
+                },
+            }
+        elif json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         response = await client.chat.completions.create(
             model=self.model,
@@ -143,7 +198,7 @@ DEFAULT_TEXT_PROVIDER_ID = os.environ.get("DEFAULT_TEXT_PROVIDER", "ollama")
 
 def get_provider(provider_id: str) -> TextProvider:
     if provider_id == "ollama":
-        return OllamaProvider()
+        return OllamaProvider(model=settings_store.get_ollama_model() or OLLAMA_MODEL)
     if provider_id == "anthropic":
         api_key = settings_store.get_key("anthropic")
         if not api_key:
@@ -162,7 +217,31 @@ def resolve_default_provider() -> TextProvider:
     try:
         return get_provider(provider_id)
     except ValueError:
-        return OllamaProvider()
+        return get_provider("ollama")
+
+
+async def list_ollama_models() -> dict:
+    """Locally-installed Ollama models (whatever `ollama pull` has fetched),
+    plus which one story breakdown/character extraction currently use -
+    lets Settings offer a dropdown instead of hardcoding OLLAMA_MODEL."""
+    models: list[dict] = []
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            response.raise_for_status()
+            for m in response.json().get("models", []):
+                models.append(
+                    {
+                        "name": m["name"],
+                        "size_bytes": m.get("size"),
+                    }
+                )
+    except httpx.HTTPError:
+        pass
+    return {
+        "models": models,
+        "selected": settings_store.get_ollama_model() or OLLAMA_MODEL,
+    }
 
 
 async def validate_key(provider_id: str, api_key: str) -> tuple[bool, str]:

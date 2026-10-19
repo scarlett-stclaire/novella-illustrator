@@ -118,6 +118,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ provider_id: providerId || null }),
     }),
+  listOllamaModels: () => request("/settings/ollama-models"),
+  setOllamaModel: (model) =>
+    request("/settings/ollama-model", {
+      method: "POST",
+      body: JSON.stringify({ model: model || null }),
+    }),
   listSettingsEngines: () => request("/settings/engines"),
   setEnabledEngines: (engineIds) =>
     request("/settings/engines", {
