@@ -57,6 +57,29 @@ the "Generate image" step will fail until at least one engine's weights are
 in place. The app only offers engines whose weights are actually present
 (checked live against what ComfyUI has loaded).
 
+## Desktop app (Tauri)
+
+`src-tauri/` wraps the frontend and native dev setup in a real macOS window,
+so `ollama`/ComfyUI/the backend start and stop with the app instead of
+needing `scripts/start.sh`/`stop.sh` run from a terminal. Run `scripts/setup.sh`
+(and download at least one engine's weights) first, same as above - the
+desktop app launches those same native processes, it doesn't bundle them.
+
+- `npx @tauri-apps/cli@latest dev` - run the desktop app against live-reloading
+  frontend/backend code, same convenience as `scripts/start.sh` plus a real
+  window.
+- `npx @tauri-apps/cli@latest build` - produce an unsigned release `.app` at
+  `src-tauri/target/release/bundle/macos/novella-illustrator.app`.
+
+**Unsigned/no Apple Developer ID yet**: tagged pushes (`git tag v0.1.0 && git
+push --tags`) trigger `.github/workflows/release.yml`, which builds the app
+and attaches a plain `.tar.gz` (not a `.dmg`) to a GitHub Release. Extracting
+via `tar -xzf` (not Finder) avoids the `com.apple.quarantine` flag that
+triggers Gatekeeper's "unidentified developer" block, so this works without a
+signing certificate - at the cost of the usual drag-to-Applications
+double-click experience a signed `.dmg` would give. Revisit this once there's
+an Apple Developer Team ID/certificate to add as a CI secret.
+
 ## Image generation engines
 
 Pick one engine to start with, or set up all three and switch between them

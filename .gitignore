@@ -21,3 +21,7 @@ backend/.venv/
 comfyui/src/
 logs/
 .pids/
+
+# Tauri build artifacts (rebuilt by `tauri build`/`tauri dev`)
+src-tauri/target/
+src-tauri/gen/schemas/

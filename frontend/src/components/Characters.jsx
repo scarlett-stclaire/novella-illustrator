@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../api.js";
+import { api, resolveAssetUrl } from "../api.js";
 import Panel from "./Panel.jsx";
 
 export default function Characters({
@@ -244,7 +244,7 @@ function CharacterCard({ novellaId, character, engines, onUpdate }) {
 
       <Panel
         scene="candle"
-        image={character.image_path}
+        image={resolveAssetUrl(character.image_path)}
         alt={character.name}
         ghostLabel={!character.image_path ? "NO PORTRAIT YET" : undefined}
       />

@@ -40,15 +40,49 @@ export default function App() {
   const [defaultTextProviderId, setDefaultTextProviderId] = useState("ollama");
 
   useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth({ ollama: false, comfyui: false }));
-    api.listEngines().then(setEngines).catch(() => setEngines([]));
-    api
-      .listTextProviders()
-      .then((data) => {
-        setTextProviders(data.providers);
-        setDefaultTextProviderId(data.default_provider_id);
-      })
-      .catch(() => setTextProviders([]));
+    // On a cold launch of the packaged app, the frontend renders instantly
+    // but the backend/ComfyUI it talks to are still starting up (ComfyUI
+    // alone took ~10-15s in testing) - a single one-shot fetch here would
+    // race that startup and lock the UI into a false "unavailable" state for
+    // the rest of the session. health is a live status, not a one-time
+    // snapshot, so poll it indefinitely rather than giving up after N tries
+    // - this also lets the header reflect ComfyUI going down later, not just
+    // coming up at launch. engines/textProviders only depend on the backend
+    // itself (not ComfyUI's slower startup), so a bounded retry is enough
+    // for those; the dev-server case (everything already running) succeeds
+    // on the first try either way, so none of this changes that behavior.
+    let cancelled = false;
+    async function loadWithRetry(fn, onSuccess, attempts = 8, delayMs = 2000) {
+      for (let i = 0; i < attempts; i++) {
+        try {
+          const data = await fn();
+          if (!cancelled) onSuccess(data);
+          return;
+        } catch {
+          if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+        }
+      }
+    }
+    async function pollHealth() {
+      while (!cancelled) {
+        try {
+          const data = await api.health();
+          if (!cancelled) setHealth(data);
+        } catch {
+          if (!cancelled) setHealth({ ollama: false, comfyui: false });
+        }
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+    pollHealth();
+    loadWithRetry(api.listEngines, setEngines);
+    loadWithRetry(api.listTextProviders, (data) => {
+      setTextProviders(data.providers);
+      setDefaultTextProviderId(data.default_provider_id);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

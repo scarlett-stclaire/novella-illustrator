@@ -1,0 +1,73 @@
+name: Release macOS build
+
+# Builds the Tauri app and attaches an unsigned .tar.gz to a GitHub Release
+# whenever a "v*" tag is pushed (e.g. v0.1.0). No code-signing or
+# notarization step yet - that needs an Apple Developer ID as a secret,
+# which this project doesn't have configured. Until then, the app is
+# distributed as a plain tar.gz (not a .dmg): extracting via `tar -xzf`
+# doesn't propagate the com.apple.quarantine flag the way Finder-based
+# dmg/zip extraction does, so it avoids Gatekeeper's "unidentified
+# developer" block without a cert. See src-tauri/src/lib.rs's top comment
+# for the same single-machine scope note - this ships a sidecar wrapper
+# around the existing dev setup, not a fully self-contained installer.
+#
+# Builds for Apple Silicon (aarch64) only, matching the macos-14 runner.
+# An Intel (x86_64) build would need a second job on an x86_64 runner
+# (e.g. macos-13) - not added here since it's outside today's scope.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+
+      - name: Build Tauri app (release, unsigned)
+        run: npx --yes @tauri-apps/cli@latest build
+        working-directory: .
+
+      - name: Package .tar.gz
+        run: |
+          cd src-tauri/target/release/bundle/macos
+          tar -czf novella-illustrator-macos-aarch64.tar.gz novella-illustrator.app
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src-tauri/target/release/bundle/macos/novella-illustrator-macos-aarch64.tar.gz
+          body: |
+            Unsigned macOS (Apple Silicon) build. Not notarized - Gatekeeper
+            will warn on launch unless extracted via `tar -xzf` rather than
+            Finder, since that's the one path that doesn't apply the
+            com.apple.quarantine flag.
+
+            Extract and run:
+            ```
+            tar -xzf novella-illustrator-macos-aarch64.tar.gz
+            open novella-illustrator.app
+            ```
+
+            Requires `scripts/setup.sh` already run once on this machine -
+            see the README. This wraps the existing native dev setup rather
+            than bundling ComfyUI/Ollama/model weights inside the .app.

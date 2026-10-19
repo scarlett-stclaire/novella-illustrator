@@ -1,4 +1,22 @@
-const BASE = "/api";
+// In the Vite dev server, "/api" is proxied to the backend (see vite.config.js).
+// The packaged Tauri app has no such proxy - its webview loads the frontend
+// from a custom scheme (tauri://localhost on macOS/Linux, http://tauri.localhost
+// on Windows), so relative fetches never reach the backend at all. Detect that
+// case and talk to the backend directly; the backend's CORS is already
+// wide-open (see main.py) so this works without extra configuration.
+const isTauri =
+  typeof window !== "undefined" &&
+  (location.protocol === "tauri:" || location.hostname === "tauri.localhost");
+const ORIGIN = isTauri ? "http://127.0.0.1:8000" : "";
+const BASE = `${ORIGIN}/api`;
+
+// Scene/character image_path values come from the backend as root-relative
+// paths ("/api/images/..."), the same proxy-dependent shape as the API calls
+// above - resolve them against the same origin so <img> tags work in the
+// packaged app too.
+export function resolveAssetUrl(path) {
+  return path ? `${ORIGIN}${path}` : path;
+}
 
 async function request(path, options) {
   const response = await fetch(`${BASE}${path}`, {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../api.js";
+import { api, resolveAssetUrl } from "../api.js";
 import Panel, { SCENE_TYPE_TO_ROOM } from "./Panel.jsx";
 
 const GHOST_LABEL = {
@@ -104,7 +104,7 @@ export default function SceneCard({
 
       <Panel
         scene={room}
-        image={scene.image_path}
+        image={resolveAssetUrl(scene.image_path)}
         alt={scene.summary}
         caption={scene.image_path ? scene.summary : undefined}
         ghostLabel={!scene.image_path ? GHOST_LABEL[scene.status] || "PENDING" : undefined}
