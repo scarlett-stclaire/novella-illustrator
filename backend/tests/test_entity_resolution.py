@@ -70,6 +70,37 @@ def test_normalize_name_maps_diminutives():
     assert normalize_name("Liz") == "elizabeth"
 
 
+def test_shared_surname_alone_does_not_merge_different_people():
+    # Regression test: a bare title-stripped surname ("Mr. Hendricks") must
+    # not merge with an unrelated full name sharing that surname
+    # ("Elizabeth Hendricks", his granddaughter) just because they share a
+    # last name - found via a live two-model extraction test on a real
+    # grandfather/granddaughter passage, where both models correctly
+    # extracted them as separate people but the old merge logic collapsed
+    # them into one.
+    raw = [
+        {"name": "Mr. Hendricks", "synopsis": "The lighthouse keeper."},
+        {"name": "Elizabeth Hendricks", "synopsis": "His granddaughter."},
+    ]
+    merged = merge_characters(raw)
+    assert len(merged) == 2
+    assert _names(merged) == {"Mr. Hendricks", "Elizabeth Hendricks"}
+
+
+def test_surname_bridge_still_works_with_corroborating_first_name():
+    # The Bennett-style merge still works because "Bill" independently
+    # corroborates the connection between "Mr. Bennett" and "Bill Bennett" -
+    # the fix narrows the surname-only case above, it doesn't remove
+    # legitimate nickname bridging.
+    raw = [
+        {"name": "Mr. Bennett", "synopsis": ""},
+        {"name": "Bill", "synopsis": ""},
+        {"name": "Bill Bennett", "synopsis": ""},
+    ]
+    merged = merge_characters(raw)
+    assert len(merged) == 1
+
+
 def test_names_match_requires_nonempty_token_overlap():
     # Two names that normalize to nothing (e.g. just a stripped title) must
     # never be treated as matching each other.

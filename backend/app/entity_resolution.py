@@ -102,9 +102,40 @@ def merge_characters(raw_items: list[dict]) -> list[dict]:
 
     uf = _UnionFind(names)
     normalized = {name: normalize_name(name) for name in names}
+    token_sets = {name: frozenset(normalized[name].split()) for name in names}
+    # Every distinct normalized token-set actually seen, for the corroboration
+    # check below - a dict so repeated sets collapse automatically.
+    all_token_sets = set(token_sets.values())
+
     for i, name_a in enumerate(names):
         for name_b in names[i + 1 :]:
-            if names_match(normalized[name_a], normalized[name_b]):
+            tokens_a, tokens_b = token_sets[name_a], token_sets[name_b]
+            if not tokens_a or not tokens_b:
+                continue
+            if tokens_a == tokens_b:
+                uf.union(name_a, name_b)
+                continue
+            smaller, larger = (
+                (tokens_a, tokens_b) if len(tokens_a) < len(tokens_b) else (tokens_b, tokens_a)
+            )
+            if not smaller.issubset(larger):
+                continue
+            if len(smaller) > 1:
+                # A 2+-token overlap (e.g. "William Bennett" inside "William
+                # Bennett III") is already strong evidence on its own.
+                uf.union(name_a, name_b)
+                continue
+            # The risky case: a single bare token (almost always what's left
+            # after stripping a title off a surname-only mention, e.g. "Mr.
+            # Hendricks" -> {"hendricks"}) is weak evidence by itself - a
+            # shared surname alone doesn't mean the same person (could be two
+            # different relatives). Only bridge it into the larger name if
+            # some OTHER independently-extracted name corroborates the
+            # connection by exactly matching what's left of the larger name
+            # once that token is removed (e.g. "Bill" -> {"william"} matching
+            # "William Bennett" minus "bennett" -> {"william"}).
+            remainder = larger - smaller
+            if remainder in all_token_sets:
                 uf.union(name_a, name_b)
 
     clusters: dict[str, _ClusterAccumulator] = {}
