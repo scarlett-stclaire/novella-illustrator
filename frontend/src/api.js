@@ -12,8 +12,24 @@ async function request(path, options) {
   return response.json();
 }
 
+async function requestForm(path, formData) {
+  const response = await fetch(`${BASE}${path}`, { method: "POST", body: formData });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail || `${response.status}: request failed`);
+  }
+  return response.json();
+}
+
 export const api = {
   health: () => request("/health"),
+  extractPdf: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return requestForm("/ingest/pdf", formData);
+  },
+  extractUrls: (urls) =>
+    request("/ingest/urls", { method: "POST", body: JSON.stringify({ urls }) }),
   listNovellas: () => request("/novellas"),
   createNovella: (title, text, targetSceneCount) =>
     request("/novellas", {

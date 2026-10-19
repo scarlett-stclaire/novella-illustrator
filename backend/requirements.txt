@@ -6,3 +6,5 @@ python-multipart==0.0.9
 websockets==13.1
 anthropic==0.69.0
 openai==1.109.1
+pypdf==6.21.1
+trafilatura==2.3.1

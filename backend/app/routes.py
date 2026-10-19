@@ -2,12 +2,13 @@ import asyncio
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from . import catalogue, llm, imagegen, providers, recommend, settings_store, storage
+from . import catalogue, ingest, llm, imagegen, providers, recommend, settings_store, storage
 from .models import (
     AddSceneRequest,
     CreateNovellaRequest,
+    IngestUrlsRequest,
     Novella,
     NovellaSummary,
     Progress,
@@ -72,6 +73,25 @@ async def set_default_provider(payload: SetDefaultProviderRequest):
 @router.get("/settings/catalogue")
 async def get_catalogue():
     return {"models": await catalogue.list_models()}
+
+
+@router.post("/ingest/pdf")
+async def ingest_pdf(file: UploadFile = File(...)):
+    file_bytes = await file.read()
+    try:
+        text = ingest.extract_pdf_text(file_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"text": text}
+
+
+@router.post("/ingest/urls")
+async def ingest_urls(payload: IngestUrlsRequest):
+    try:
+        text, results = await ingest.extract_urls_text(payload.urls)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"text": text, "results": results}
 
 
 @router.post("/novellas", response_model=Novella)

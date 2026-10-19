@@ -56,6 +56,10 @@ class SetDefaultProviderRequest(BaseModel):
     provider_id: Optional[str] = None
 
 
+class IngestUrlsRequest(BaseModel):
+    urls: list[str]
+
+
 class UpdateScenePromptRequest(BaseModel):
     image_prompt: str
 
