@@ -8,3 +8,6 @@ anthropic==0.69.0
 openai==1.109.1
 pypdf==6.21.1
 trafilatura==2.3.1
+reportlab==5.0.1
+ebooklib==0.20
+pillow==13.0.0

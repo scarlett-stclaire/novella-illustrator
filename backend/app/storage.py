@@ -7,6 +7,7 @@ from .models import Novella
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 NOVELLAS_DIR = DATA_DIR / "novellas"
 IMAGES_DIR = DATA_DIR / "images"
+EXPORTS_DIR = DATA_DIR / "exports"
 
 _lock = threading.Lock()
 
@@ -18,6 +19,7 @@ def _novella_path(novella_id: str) -> Path:
 def init_storage() -> None:
     NOVELLAS_DIR.mkdir(parents=True, exist_ok=True)
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def save_novella(novella: Novella) -> None:
@@ -41,6 +43,12 @@ def list_novellas() -> list[Novella]:
 
 def novella_image_dir(novella_id: str) -> Path:
     path = IMAGES_DIR / novella_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def novella_export_dir(novella_id: str) -> Path:
+    path = EXPORTS_DIR / novella_id
     path.mkdir(parents=True, exist_ok=True)
     return path
 

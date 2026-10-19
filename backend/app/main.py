@@ -19,3 +19,4 @@ storage.init_storage()
 
 app.include_router(router)
 app.mount("/api/images", StaticFiles(directory=str(storage.IMAGES_DIR)), name="images")
+app.mount("/api/exports", StaticFiles(directory=str(storage.EXPORTS_DIR)), name="exports")

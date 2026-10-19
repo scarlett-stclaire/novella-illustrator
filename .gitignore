@@ -13,6 +13,8 @@ comfyui/output/
 backend/data/novellas/*.json
 backend/data/images/*
 !backend/data/images/.gitkeep
+backend/data/exports/*
+!backend/data/exports/.gitkeep
 
 # Native setup artifacts (rebuilt by scripts/setup.sh on any machine)
 backend/.venv/

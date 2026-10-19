@@ -173,4 +173,7 @@ export const api = {
         image_prompt_b: promptB,
       }),
     }),
+  exportNovella: (novellaId, format) =>
+    request(`/novellas/${novellaId}/export?format=${format}`, { method: "POST" }),
+  listExports: (novellaId) => request(`/novellas/${novellaId}/exports`),
 };

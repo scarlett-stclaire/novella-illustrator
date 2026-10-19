@@ -1,10 +1,11 @@
 import asyncio
+import re
 import uuid
 from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from . import catalogue, characters_llm, ingest, llm, imagegen, providers, recommend, settings_store, storage
+from . import catalogue, characters_llm, export, ingest, llm, imagegen, providers, recommend, settings_store, storage
 from .models import (
     AddCharacterRequest,
     AddSceneRequest,
@@ -114,6 +115,61 @@ async def create_novella(payload: CreateNovellaRequest):
     )
     storage.save_novella(novella)
     return novella
+
+
+EXPORT_FORMATS = {
+    "pdf": export.export_pdf,
+    "web": export.export_animated_web,
+    "epub": export.export_epub,
+    "png": export.export_png_set,
+    "mov": export.export_mov,
+}
+EXPORT_EXTENSIONS = {"pdf": ".pdf", "web": ".html", "epub": ".epub", "png": ".zip", "mov": ".mov"}
+
+
+def _safe_filename(title: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "_", title.strip()).strip("_")
+    return cleaned or "novella"
+
+
+@router.post("/novellas/{novella_id}/export")
+async def export_novella(novella_id: str, format: str):
+    if format not in EXPORT_FORMATS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown format '{format}'. Choose one of {sorted(EXPORT_FORMATS)}",
+        )
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+
+    export_dir = storage.novella_export_dir(novella_id)
+    filename = f"{_safe_filename(novella.title)}{EXPORT_EXTENSIONS[format]}"
+    output_path = export_dir / filename
+    try:
+        EXPORT_FORMATS[format](novella, storage.DATA_DIR, output_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return {
+        "filename": filename,
+        "download_url": f"/api/exports/{novella_id}/{filename}",
+    }
+
+
+@router.get("/novellas/{novella_id}/exports")
+async def list_exports(novella_id: str):
+    export_dir = storage.novella_export_dir(novella_id)
+    files = [
+        {
+            "filename": path.name,
+            "download_url": f"/api/exports/{novella_id}/{path.name}",
+            "size_bytes": path.stat().st_size,
+        }
+        for path in sorted(export_dir.iterdir())
+        if path.is_file()
+    ]
+    return {"files": files}
 
 
 @router.get("/novellas/{novella_id}/cost-perf")
