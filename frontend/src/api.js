@@ -118,6 +118,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ provider_id: providerId || null }),
     }),
+  listSettingsEngines: () => request("/settings/engines"),
+  setEnabledEngines: (engineIds) =>
+    request("/settings/engines", {
+      method: "POST",
+      body: JSON.stringify({ engine_ids: engineIds }),
+    }),
+  getStorageSettings: () => request("/settings/storage"),
+  setStorageRoot: (path) =>
+    request("/settings/storage", {
+      method: "POST",
+      body: JSON.stringify({ path: path || null }),
+    }),
   extractCharacters: (novellaId, textProviderId) =>
     request(
       `/novellas/${novellaId}/characters/extract${

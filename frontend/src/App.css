@@ -888,14 +888,16 @@ select {
 }
 
 .provider-list,
-.catalogue-list {
+.catalogue-list,
+.engine-list {
   display: grid;
   gap: var(--sp-3);
   margin-top: var(--sp-4);
 }
 
 .provider-row,
-.catalogue-row {
+.catalogue-row,
+.engine-row {
   background: var(--white);
   border: 1px solid var(--hairline-light);
   border-radius: var(--radius-md);
@@ -906,7 +908,8 @@ select {
 }
 
 .provider-row-header,
-.catalogue-row-header {
+.catalogue-row-header,
+.engine-row-header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -914,11 +917,26 @@ select {
 }
 
 .provider-row-header strong,
-.catalogue-row-header strong {
+.catalogue-row-header strong,
+.engine-row-header strong {
   font-family: var(--font-display);
   font-size: 18px;
   letter-spacing: 0.02em;
   color: var(--ink);
+}
+
+.engine-row-header {
+  cursor: pointer;
+}
+
+.storage-location-row {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.storage-location-row input {
+  flex: 1;
 }
 
 .provider-default {

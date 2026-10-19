@@ -22,10 +22,17 @@ _lock = threading.Lock()
 
 def _read() -> dict:
     if not SETTINGS_PATH.exists():
-        return {"api_keys": {}, "default_text_provider": None}
+        return {
+            "api_keys": {},
+            "default_text_provider": None,
+            "enabled_engine_ids": None,
+            "storage_root": None,
+        }
     data = json.loads(SETTINGS_PATH.read_text())
     data.setdefault("api_keys", {})
     data.setdefault("default_text_provider", None)
+    data.setdefault("enabled_engine_ids", None)
+    data.setdefault("storage_root", None)
     return data
 
 
@@ -73,4 +80,35 @@ def set_default_text_provider(provider_id: Optional[str]) -> None:
     with _lock:
         data = _read()
         data["default_text_provider"] = provider_id
+        _write(data)
+
+
+def get_enabled_engine_ids() -> Optional[list[str]]:
+    """None means "all available engines enabled" - the default, so existing
+    installs aren't suddenly left with zero engines (F2's "only selected
+    models appear" needs an explicit opt-out, not an opt-in by default)."""
+    with _lock:
+        return _read()["enabled_engine_ids"]
+
+
+def set_enabled_engine_ids(engine_ids: Optional[list[str]]) -> None:
+    with _lock:
+        data = _read()
+        data["enabled_engine_ids"] = engine_ids
+        _write(data)
+
+
+def get_storage_root() -> Optional[str]:
+    """None means "use the default backend/data location" (F3). Changing
+    this only takes effect on the next backend restart - storage.py computes
+    its directory constants at import time, before any request can change
+    this setting."""
+    with _lock:
+        return _read()["storage_root"]
+
+
+def set_storage_root(path: Optional[str]) -> None:
+    with _lock:
+        data = _read()
+        data["storage_root"] = path
         _write(data)

@@ -8,8 +8,14 @@ WORKFLOWS_DIR = Path(__file__).resolve().parent.parent / "workflows"
 
 DEFAULT_NEGATIVE_PROMPT = os.environ.get(
     "DEFAULT_NEGATIVE_PROMPT",
+    # Anatomy/quality basics, plus the gothic style sheet's own "Never" list
+    # (specs/Novella Comic Generator Design.zip's Art Direction sheet) -
+    # glossy/airbrushed skin, camera artifacts, and off-palette gradients
+    # are exactly what would make a panel look generated instead of printed.
     "bad anatomy, extra fingers, missing fingers, malformed hands, fused fingers, "
-    "extra limbs, mutated hands, blurry, low quality, watermark, deformed",
+    "extra limbs, mutated hands, blurry, low quality, watermark, deformed, "
+    "glossy airbrushed skin, lens flare, bokeh, god rays, purple and teal gradient, "
+    "oversaturated colors, photorealistic, 3d render, floating text, embedded typography",
 )
 
 FLUX_UNET_NAME = os.environ.get("FLUX_UNET_NAME", "flux1-schnell.safetensors")
@@ -32,8 +38,21 @@ class Engine:
     negative_node: Optional[str] = None
     seed_nodes: list[str] = field(default_factory=list)
     field_overrides: dict[str, dict[str, str]] = field(default_factory=dict)
+    # Node id of this engine's LoadImage node, if it supports IPAdapter
+    # character-reference conditioning. None for engines that don't.
+    reference_image_node: Optional[str] = None
 
-    def build_workflow(self, prompt: str, negative: str, seed: int) -> dict:
+    @property
+    def supports_reference_image(self) -> bool:
+        return self.reference_image_node is not None
+
+    def build_workflow(
+        self,
+        prompt: str,
+        negative: str,
+        seed: int,
+        reference_image_filename: Optional[str] = None,
+    ) -> dict:
         workflow = json.loads((WORKFLOWS_DIR / self.workflow_file).read_text())
         for node_id, fields in self.field_overrides.items():
             workflow[node_id]["inputs"].update(fields)
@@ -42,6 +61,14 @@ class Engine:
             workflow[self.negative_node]["inputs"]["text"] = negative
         for node_id in self.seed_nodes:
             workflow[node_id]["inputs"]["seed"] = seed
+        if self.reference_image_node:
+            if not reference_image_filename:
+                raise ValueError(
+                    f"engine {self.id} requires a reference image but none was given"
+                )
+            workflow[self.reference_image_node]["inputs"]["image"] = (
+                reference_image_filename
+            )
         return workflow
 
 
@@ -72,6 +99,21 @@ ENGINES: dict[str, Engine] = {
             "CheckpointLoaderSimple",
             "ckpt_name",
             "sd_xl_base_1.0.safetensors",
+        ),
+    ),
+    "sdxl_adetailer_ipadapter": Engine(
+        id="sdxl_adetailer_ipadapter",
+        label="SDXL + ADetailer (character reference)",
+        workflow_file="sdxl_adetailer_ipadapter_api.json",
+        output_node="11",
+        prompt_node="2",
+        negative_node="3",
+        seed_nodes=["5", "8", "10"],
+        reference_image_node="14",
+        availability_check=(
+            "IPAdapterModelLoader",
+            "ipadapter_file",
+            "ip-adapter-plus_sdxl_vit-h.safetensors",
         ),
     ),
     "qwen_image_2512": Engine(

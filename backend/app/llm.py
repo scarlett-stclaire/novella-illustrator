@@ -13,9 +13,13 @@ OLLAMA_MODEL = providers.OLLAMA_MODEL
 
 STYLE_HINT = os.environ.get(
     "ILLUSTRATION_STYLE_HINT",
-    "soft vibrant watercolor painting, loose expressive brushstrokes, "
-    "warm sunlit coastal palette, lush greenery and wildflowers, "
-    "romantic and gentle mood",
+    "gothic ink-and-paper comic illustration, one dramatic light source "
+    "casting deep ink-black shadows, high contrast between black ink and "
+    "pale bone-white highlights, muted palette of black ink, bone white and "
+    "a single rose-pink accent color, flat printed shading with "
+    "crosshatching and halftone dots rather than airbrushed gradients, "
+    "strong graphic silhouettes, vignette falling to black at the panel "
+    "edges, moody gothic atmosphere",
 )
 
 CHUNK_CHAR_LIMIT = 6000

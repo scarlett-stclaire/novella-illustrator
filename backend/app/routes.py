@@ -1,6 +1,7 @@
 import asyncio
 import re
 import uuid
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -19,6 +20,8 @@ from .models import (
     SaveApiKeyRequest,
     Scene,
     SetDefaultProviderRequest,
+    SetEnabledEnginesRequest,
+    SetStorageRootRequest,
     SplitSceneRequest,
     UpdateCharacterRequest,
     UpdateScenePromptRequest,
@@ -78,6 +81,49 @@ async def set_default_provider(payload: SetDefaultProviderRequest):
 @router.get("/settings/catalogue")
 async def get_catalogue():
     return {"models": await catalogue.list_models()}
+
+
+@router.get("/settings/engines")
+async def get_settings_engines():
+    """F2: every registered image engine with both its availability (model
+    files present) and whether the user has it enabled - unlike GET
+    /api/engines, this never filters anything out, so disabled engines can
+    still be shown (and re-enabled) here."""
+    return {"engines": await imagegen.list_engines_for_settings()}
+
+
+@router.post("/settings/engines")
+async def set_settings_engines(payload: SetEnabledEnginesRequest):
+    settings_store.set_enabled_engine_ids(payload.engine_ids)
+    return {"ok": True}
+
+
+@router.get("/settings/storage")
+async def get_settings_storage():
+    """F3: reports the effective storage root in use by this running backend
+    process, alongside whatever override is saved (which may differ if it
+    was changed since the last restart - storage.py reads it only once, at
+    import time)."""
+    return {
+        "active_root": str(storage.DATA_DIR),
+        "saved_override": settings_store.get_storage_root(),
+    }
+
+
+@router.post("/settings/storage")
+async def set_settings_storage(payload: SetStorageRootRequest):
+    if payload.path:
+        path = Path(payload.path).expanduser()
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Can't create or write to that path: {exc}"
+            )
+        settings_store.set_storage_root(str(path))
+    else:
+        settings_store.set_storage_root(None)
+    return {"ok": True, "restart_required": True}
 
 
 @router.post("/ingest/pdf")
@@ -714,9 +760,28 @@ async def recommend_scene_engine(
     return recommend.compare_for_text(scene.image_prompt, available)
 
 
+def _character_reference_image_path(
+    novella: Novella, character_id: str
+) -> Path:
+    """Resolves a character's stored portrait URL (/api/images/{novella_id}/...)
+    back to the actual file on disk, for feeding into an IPAdapter-capable
+    engine as its reference image."""
+    character = next((c for c in novella.characters if c.id == character_id), None)
+    if character is None:
+        raise HTTPException(status_code=404, detail="Character not found")
+    if not character.image_path:
+        raise HTTPException(
+            status_code=400, detail="Character has no portrait to use as a reference"
+        )
+    return storage.IMAGES_DIR / character.image_path.removeprefix("/api/images/")
+
+
 @router.post("/novellas/{novella_id}/scenes/{scene_id}/generate", response_model=Novella)
 async def generate_scene_image(
-    novella_id: str, scene_id: str, engine_id: Optional[str] = None
+    novella_id: str,
+    scene_id: str,
+    engine_id: Optional[str] = None,
+    character_id: Optional[str] = None,
 ):
     novella = storage.load_novella(novella_id)
     if novella is None:
@@ -729,13 +794,27 @@ async def generate_scene_image(
     effective_engine_id = (
         engine_id or scene.recommended_engine_id or imagegen.DEFAULT_ENGINE_ID
     )
+    # character_id is an R&D spike for F14 true character-consistent
+    # generation (IPAdapter) - only "sdxl_adetailer_ipadapter" has the
+    # LoadImage/IPAdapter nodes to use it; other engines ignore it.
+    reference_image_path = (
+        _character_reference_image_path(novella, character_id)
+        if character_id
+        else None
+    )
 
     novella = storage.update_scene(
         novella_id, scene_id, status="generating", error=None, progress=None
     )
 
     asyncio.create_task(
-        _run_generation(novella_id, scene_id, scene.image_prompt, effective_engine_id)
+        _run_generation(
+            novella_id,
+            scene_id,
+            scene.image_prompt,
+            effective_engine_id,
+            reference_image_path,
+        )
     )
 
     return novella
@@ -787,7 +866,11 @@ async def regenerate_scene_image(
 
 
 async def _run_generation(
-    novella_id: str, scene_id: str, image_prompt: str, engine_id: str
+    novella_id: str,
+    scene_id: str,
+    image_prompt: str,
+    engine_id: str,
+    reference_image_path: Optional[Path] = None,
 ) -> None:
     image_dir = storage.novella_image_dir(novella_id)
     output_path = image_dir / f"{scene_id}.png"
@@ -799,7 +882,11 @@ async def _run_generation(
 
     try:
         await imagegen.generate_image(
-            image_prompt, output_path, engine_id=engine_id, on_progress=on_progress
+            image_prompt,
+            output_path,
+            engine_id=engine_id,
+            reference_image_path=reference_image_path,
+            on_progress=on_progress,
         )
         storage.update_scene(
             novella_id,

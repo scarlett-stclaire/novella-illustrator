@@ -2,9 +2,16 @@ import json
 import threading
 from pathlib import Path
 
+from . import settings_store
 from .models import Novella
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+# F3: the user can point this at another drive/location via Settings, but it
+# only takes effect on the next restart - this module's directory constants
+# are computed once at import time, before a running process could ever see
+# a change made through the API.
+_DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_custom_root = settings_store.get_storage_root()
+DATA_DIR = Path(_custom_root) / "novella-illustrator-data" if _custom_root else _DEFAULT_DATA_DIR
 NOVELLAS_DIR = DATA_DIR / "novellas"
 IMAGES_DIR = DATA_DIR / "images"
 EXPORTS_DIR = DATA_DIR / "exports"

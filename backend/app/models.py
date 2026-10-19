@@ -75,6 +75,16 @@ class SetDefaultProviderRequest(BaseModel):
     provider_id: Optional[str] = None
 
 
+class SetEnabledEnginesRequest(BaseModel):
+    # None = every available engine enabled (the default); [] disables all.
+    engine_ids: Optional[list[str]] = None
+
+
+class SetStorageRootRequest(BaseModel):
+    # None/empty resets to the default backend/data location.
+    path: Optional[str] = None
+
+
 class IngestUrlsRequest(BaseModel):
     urls: list[str]
 

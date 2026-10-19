@@ -11,6 +11,7 @@ from typing import Awaitable, Callable, Optional
 import httpx
 import websockets
 
+from . import settings_store
 from .engines import DEFAULT_ENGINE_ID, DEFAULT_NEGATIVE_PROMPT, ENGINES
 
 COMFYUI_BASE_URL = os.environ.get("COMFYUI_BASE_URL", "http://localhost:8188")
@@ -40,6 +41,24 @@ ProgressCallback = Callable[[int, int], Awaitable[None]]
 
 def build_feedback_prompt(image_prompt: str, feedback: str) -> str:
     return f"{image_prompt}, {feedback.strip()}, {ANATOMY_FIX_HINT}"
+
+
+async def _upload_reference_image(path: Path) -> str:
+    """Uploads a character portrait to ComfyUI's /upload/image so a LoadImage
+    node (used by IPAdapter-capable engines) can reference it by filename -
+    ComfyUI's LoadImage only reads from its own managed input directory, not
+    arbitrary filesystem paths. overwrite=true keeps re-generating with the
+    same portrait from littering ComfyUI's input dir with "name (1).png"
+    copies."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        with path.open("rb") as f:
+            response = await client.post(
+                f"{COMFYUI_BASE_URL}/upload/image",
+                files={"image": (path.name, f, "image/png")},
+                data={"type": "input", "overwrite": "true"},
+            )
+        response.raise_for_status()
+        return response.json()["name"]
 
 
 async def _relay_progress(
@@ -80,10 +99,18 @@ async def generate_image(
     output_path: Path,
     engine_id: str = DEFAULT_ENGINE_ID,
     negative: str = DEFAULT_NEGATIVE_PROMPT,
+    reference_image_path: Optional[Path] = None,
     on_progress: Optional[ProgressCallback] = None,
 ) -> None:
     engine = ENGINES[engine_id]
-    workflow = engine.build_workflow(prompt, negative, random.randint(0, 2**32 - 1))
+    reference_image_filename = None
+    if engine.supports_reference_image:
+        if reference_image_path is None:
+            raise ValueError(f"engine {engine_id} requires a reference image")
+        reference_image_filename = await _upload_reference_image(reference_image_path)
+    workflow = engine.build_workflow(
+        prompt, negative, random.randint(0, 2**32 - 1), reference_image_filename
+    )
     client_id = str(uuid.uuid4())
 
     # Connect before queuing so we can't miss early progress events.
@@ -157,10 +184,11 @@ async def check_health() -> bool:
         return False
 
 
-async def list_engines() -> list[dict]:
-    """Reports each registered engine plus whether its model files are
-    actually present (visible to ComfyUI), so the frontend only offers
-    engines that will actually work."""
+async def _engine_availability() -> list[dict]:
+    """Reports every registered engine plus whether its model files are
+    actually present (visible to ComfyUI), regardless of the user's F2
+    enabled-selection - the raw, unfiltered truth that both list_engines()
+    and the Settings screen's model-selection list are built from."""
     results = []
     async with httpx.AsyncClient(timeout=10) as client:
         for engine in ENGINES.values():
@@ -179,3 +207,27 @@ async def list_engines() -> list[dict]:
                 {"id": engine.id, "label": engine.label, "available": available}
             )
     return results
+
+
+async def list_engines() -> list[dict]:
+    """Engines offered for actual generation: available (model files present)
+    AND, per F2 ("only selected models appear in the app"), not deselected
+    by the user in Settings. enabled_engine_ids is None by default (every
+    available engine enabled), so existing installs aren't left with none."""
+    enabled_ids = settings_store.get_enabled_engine_ids()
+    return [
+        e
+        for e in await _engine_availability()
+        if enabled_ids is None or e["id"] in enabled_ids
+    ]
+
+
+async def list_engines_for_settings() -> list[dict]:
+    """Every registered engine with both its availability (file presence)
+    and whether the user currently has it enabled - the Settings screen
+    needs to show and toggle disabled engines too, not just hide them."""
+    enabled_ids = settings_store.get_enabled_engine_ids()
+    return [
+        {**e, "enabled": enabled_ids is None or e["id"] in enabled_ids}
+        for e in await _engine_availability()
+    ]
