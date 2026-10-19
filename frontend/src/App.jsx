@@ -27,6 +27,8 @@ export default function App() {
   const [error, setError] = useState(null);
   const [health, setHealth] = useState(null);
   const [showCoverage, setShowCoverage] = useState(false);
+  const [showCostPerf, setShowCostPerf] = useState(false);
+  const [costPerf, setCostPerf] = useState(null);
   const [engines, setEngines] = useState([]);
   const [textProviders, setTextProviders] = useState([]);
   const [defaultTextProviderId, setDefaultTextProviderId] = useState("ollama");
@@ -54,6 +56,8 @@ export default function App() {
 
   useEffect(() => {
     setShowCoverage(false);
+    setShowCostPerf(false);
+    setCostPerf(null);
     setError(null);
     if (!novellaId) {
       setNovella(null);
@@ -134,6 +138,22 @@ export default function App() {
     }
   }
 
+  async function handleToggleCostPerf() {
+    if (showCostPerf) {
+      setShowCostPerf(false);
+      return;
+    }
+    setShowCostPerf(true);
+    if (!costPerf) {
+      try {
+        const data = await api.getNovellaCostPerf(novella.id);
+        setCostPerf(data);
+      } catch (err) {
+        setError(err.message);
+      }
+    }
+  }
+
   async function handleRegenerate(sceneId, feedback, engineId) {
     setNovella((prev) => ({
       ...prev,
@@ -194,6 +214,43 @@ export default function App() {
           <h2>{novella.title}</h2>
           <button onClick={() => navigate("/")}>Back to all novellas</button>
 
+          {novella.recommended_engine_id && (
+            <div className="story-recommendation">
+              <p>
+                Story reads as <strong>{novella.scene_type?.replace("_", " ")}</strong>,{" "}
+                <strong>{novella.complexity}</strong> complexity. Recommended
+                engine:{" "}
+                <strong>
+                  {engines.find((e) => e.id === novella.recommended_engine_id)?.label ??
+                    novella.recommended_engine_id}
+                </strong>
+              </p>
+              <button onClick={handleToggleCostPerf}>
+                {showCostPerf ? "Hide" : "Show"} cost/performance comparison
+              </button>
+              {showCostPerf && costPerf && (
+                <div className="cost-perf-view">
+                  {costPerf.candidates.map((c) => (
+                    <div
+                      key={c.id}
+                      className={`cost-perf-row ${c.recommended ? "cost-perf-recommended" : ""}`}
+                    >
+                      <span className="cost-perf-label">
+                        {c.recommended ? "★ " : ""}
+                        {c.label}
+                      </span>
+                      <span className="cost-perf-score">score {c.score}</span>
+                      <span className="cost-perf-time">
+                        ~{Math.round(c.avg_seconds_per_image / 60)} min/image
+                      </span>
+                      <span className="cost-perf-notes">{c.notes}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {breakingDown && (
             <div className="breakdown-progress">
               <p>Breaking the story into scenes…</p>
@@ -227,6 +284,7 @@ export default function App() {
           )}
 
           <SceneList
+            novellaId={novella.id}
             scenes={novella.scenes}
             engines={engines}
             onSavePrompt={handleSavePrompt}

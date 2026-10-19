@@ -64,6 +64,14 @@ export const api = {
   deleteScene: (novellaId, sceneId) =>
     request(`/novellas/${novellaId}/scenes/${sceneId}`, { method: "DELETE" }),
   listTextProviders: () => request("/settings/providers"),
+  listCatalogue: () => request("/settings/catalogue"),
+  getNovellaCostPerf: (novellaId) => request(`/novellas/${novellaId}/cost-perf`),
+  recommendForScene: (novellaId, sceneId, feedback) =>
+    request(
+      `/novellas/${novellaId}/scenes/${sceneId}/recommend${
+        feedback ? `?feedback=${encodeURIComponent(feedback)}` : ""
+      }`
+    ),
   saveProviderKey: (providerId, apiKey) =>
     request(`/settings/providers/${providerId}/key`, {
       method: "POST",

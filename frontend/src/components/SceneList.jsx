@@ -2,6 +2,7 @@ import SceneCard from "./SceneCard.jsx";
 import AddSceneRow from "./AddSceneRow.jsx";
 
 export default function SceneList({
+  novellaId,
   scenes,
   engines,
   onSavePrompt,
@@ -16,6 +17,7 @@ export default function SceneList({
       {scenes.map((scene) => (
         <div key={scene.id}>
           <SceneCard
+            novellaId={novellaId}
             scene={scene}
             engines={engines}
             onSavePrompt={onSavePrompt}

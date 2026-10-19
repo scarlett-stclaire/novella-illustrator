@@ -8,11 +8,16 @@ export default function Settings() {
   const [busyProvider, setBusyProvider] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [catalogue, setCatalogue] = useState([]);
 
   async function refresh() {
-    const data = await api.listTextProviders();
-    setProviders(data.providers);
-    setDefaultProviderId(data.default_provider_id);
+    const [providersData, catalogueData] = await Promise.all([
+      api.listTextProviders(),
+      api.listCatalogue(),
+    ]);
+    setProviders(providersData.providers);
+    setDefaultProviderId(providersData.default_provider_id);
+    setCatalogue(catalogueData.models);
   }
 
   useEffect(() => {
@@ -125,6 +130,40 @@ export default function Settings() {
                   </>
                 )}
               </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <h2>Open-source models</h2>
+      <p className="settings-note">
+        Downloaded by hand for now (no in-app downloader yet) - each entry
+        shows the command used to fetch it. See the README for full details.
+      </p>
+      <div className="catalogue-list">
+        {catalogue.map((m) => (
+          <div key={m.id} className="catalogue-row">
+            <div className="catalogue-row-header">
+              <strong>{m.display_name}</strong>
+              <span className="catalogue-task-type">{m.task_type}</span>
+              <span
+                className={`status ${m.installed ? "status-done" : "status-error"}`}
+              >
+                {m.installed ? "installed" : "not installed"}
+              </span>
+              <span className="catalogue-size">{m.download_size_gb} GB</span>
+            </div>
+            <p className="catalogue-description">{m.description}</p>
+            <p className="catalogue-meta">
+              {m.license}
+              {m.requires_account && " · requires a free account on the source site"}
+              {" · "}
+              <a href={m.source_url} target="_blank" rel="noreferrer">
+                source
+              </a>
+            </p>
+            {!m.installed && (
+              <code className="catalogue-download-hint">{m.download_hint}</code>
             )}
           </div>
         ))}

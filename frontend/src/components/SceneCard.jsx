@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { api } from "../api.js";
 
 export default function SceneCard({
+  novellaId,
   scene,
   engines,
   onSavePrompt,
@@ -14,8 +16,12 @@ export default function SceneCard({
   const [feedback, setFeedback] = useState(scene.feedback || "");
   const availableEngines = (engines || []).filter((e) => e.available);
   const [engineId, setEngineId] = useState(
-    scene.engine_id || availableEngines[0]?.id || ""
+    scene.engine_id || scene.recommended_engine_id || availableEngines[0]?.id || ""
   );
+  const [recommendation, setRecommendation] = useState(null);
+  const [recommending, setRecommending] = useState(false);
+
+  const recommendedEngine = engines?.find((e) => e.id === scene.recommended_engine_id);
 
   async function handleSave() {
     setSaving(true);
@@ -40,11 +46,31 @@ export default function SceneCard({
     onRegenerate(scene.id, feedback.trim(), engineId);
   }
 
+  async function handleGetRecommendation() {
+    setRecommending(true);
+    try {
+      const result = await api.recommendForScene(
+        novellaId,
+        scene.id,
+        feedback.trim()
+      );
+      setRecommendation(result);
+      if (result.recommended_engine_id) {
+        setEngineId(result.recommended_engine_id);
+      }
+    } catch {
+      // non-critical - leave the manual engine picker as the fallback
+    } finally {
+      setRecommending(false);
+    }
+  }
+
   const engineSelect = availableEngines.length > 0 && (
     <select value={engineId} onChange={(e) => setEngineId(e.target.value)}>
       {availableEngines.map((e) => (
         <option key={e.id} value={e.id}>
           {e.label}
+          {e.id === scene.recommended_engine_id ? " (recommended)" : ""}
         </option>
       ))}
     </select>
@@ -56,8 +82,23 @@ export default function SceneCard({
         Scene {scene.index + 1}{" "}
         <span className={`status status-${scene.status}`}>{scene.status}</span>
         {scene.manual && <span className="status status-manual">manual</span>}
+        {scene.scene_type && (
+          <span className="scene-tag" title="heuristic scene-type classification">
+            {scene.scene_type.replace("_", " ")}
+          </span>
+        )}
+        {scene.complexity && (
+          <span className="scene-tag" title="heuristic complexity classification">
+            {scene.complexity}
+          </span>
+        )}
       </div>
       <p className="scene-summary">{scene.summary}</p>
+      {recommendedEngine && (
+        <p className="scene-recommendation">
+          Recommended engine: <strong>{recommendedEngine.label}</strong>
+        </p>
+      )}
       <textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
@@ -107,11 +148,21 @@ export default function SceneCard({
             <textarea
               placeholder="What's wrong with this image? (e.g. hands look contorted)"
               value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
+              onChange={(e) => {
+                setFeedback(e.target.value);
+                setRecommendation(null);
+              }}
               rows={2}
             />
             <div className="scene-feedback-actions">
               {engineSelect}
+              <button
+                onClick={handleGetRecommendation}
+                disabled={recommending}
+                title="Suggest which engine best fixes the issue you described"
+              >
+                {recommending ? "Checking..." : "Suggest a model"}
+              </button>
               <button
                 onClick={handleRegenerate}
                 disabled={scene.status === "generating" || !feedback.trim()}
@@ -121,6 +172,30 @@ export default function SceneCard({
                   : "Regenerate with fix"}
               </button>
             </div>
+            {recommendation && (
+              <div className="cost-perf-view">
+                {recommendation.issue_type && (
+                  <p className="cost-perf-summary">
+                    Issue detected: <strong>{recommendation.issue_type}</strong>
+                  </p>
+                )}
+                {recommendation.candidates.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`cost-perf-row ${c.recommended ? "cost-perf-recommended" : ""}`}
+                  >
+                    <span className="cost-perf-label">
+                      {c.recommended ? "★ " : ""}
+                      {c.label}
+                    </span>
+                    <span className="cost-perf-score">score {c.score}</span>
+                    <span className="cost-perf-time">
+                      ~{Math.round(c.avg_seconds_per_image / 60)} min/image
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
