@@ -71,14 +71,15 @@ desktop app launches those same native processes, it doesn't bundle them.
 - `npx @tauri-apps/cli@latest build` - produce an unsigned release `.app` at
   `src-tauri/target/release/bundle/macos/novella-illustrator.app`.
 
-**Unsigned/no Apple Developer ID yet**: tagged pushes (`git tag v0.1.0 && git
-push --tags`) trigger `.github/workflows/release.yml`, which builds the app
-and attaches a plain `.tar.gz` (not a `.dmg`) to a GitHub Release. Extracting
-via `tar -xzf` (not Finder) avoids the `com.apple.quarantine` flag that
-triggers Gatekeeper's "unidentified developer" block, so this works without a
-signing certificate - at the cost of the usual drag-to-Applications
-double-click experience a signed `.dmg` would give. Revisit this once there's
-an Apple Developer Team ID/certificate to add as a CI secret.
+**Unsigned by design**: this project deliberately stays outside Apple's paid
+developer program - no Developer ID, no notarized `.dmg`. Tagged pushes
+(`git tag v0.1.0 && git push --tags`) trigger `.github/workflows/release.yml`,
+which builds the app and attaches a plain `.tar.gz` (not a `.dmg`) to a
+GitHub Release. Extracting via `tar -xzf` (not Finder) avoids the
+`com.apple.quarantine` flag that triggers Gatekeeper's "unidentified
+developer" block, so this works without a signing certificate - at the cost
+of the usual drag-to-Applications double-click experience a signed `.dmg`
+would give.
 
 ## Image generation engines
 
