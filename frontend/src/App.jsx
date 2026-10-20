@@ -8,6 +8,7 @@ import Settings from "./components/Settings.jsx";
 import Characters from "./components/Characters.jsx";
 import MindMap from "./components/MindMap.jsx";
 import Publish from "./components/Publish.jsx";
+import WorkflowBar from "./components/WorkflowBar.jsx";
 
 function navigate(path) {
   window.history.pushState({}, "", path);
@@ -118,6 +119,95 @@ export default function App() {
   const extractingCharacters = novella?.character_status === "extracting";
   const anyCharacterGenerating =
     novella?.characters?.some((c) => c.status === "generating") ?? false;
+
+  // A chunk can take minutes with a large local model and the chunk-count
+  // progress bar only moves between whole chunks, so a single-chunk story
+  // (the common case) shows flat "starting..." text for the entire wait -
+  // reads as frozen even though it's working. An elapsed-time counter at
+  // least shows it's alive; see also the workflow bar below for overall
+  // stage context during the same wait.
+  const [breakdownElapsed, setBreakdownElapsed] = useState(0);
+  useEffect(() => {
+    if (!breakingDown) {
+      setBreakdownElapsed(0);
+      return;
+    }
+    const start = Date.now();
+    const interval = setInterval(() => {
+      setBreakdownElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [breakingDown]);
+
+  const hasScenes = (novella?.scenes.length ?? 0) > 0;
+  const hasCharacters =
+    novella?.character_status === "ready" || (novella?.characters?.length ?? 0) > 0;
+  const anyImageDone = novella?.scenes.some((s) => s.image_path) ?? false;
+  const allImagesDone = hasScenes && novella.scenes.every((s) => s.image_path);
+
+  const workflowStages = novella
+    ? [
+        { id: "story", label: "Story", status: "done" },
+        {
+          id: "breakdown",
+          label: "Breakdown",
+          status:
+            novella.status === "error"
+              ? "error"
+              : breakingDown
+              ? "active"
+              : hasScenes
+              ? "done"
+              : "pending",
+          hint: "Scene breakdown",
+        },
+        {
+          id: "characters",
+          label: "Characters",
+          status: extractingCharacters
+            ? "active"
+            : novella.character_status === "error"
+            ? "error"
+            : hasCharacters
+            ? "done"
+            : "pending",
+          hint: "Click to open the Characters panel",
+        },
+        {
+          id: "illustrate",
+          label: "Illustrate",
+          status: anyGenerating
+            ? "active"
+            : allImagesDone
+            ? "done"
+            : anyImageDone
+            ? "active"
+            : "pending",
+          hint: "Scroll to the scene list to generate images",
+        },
+        {
+          id: "publish",
+          label: "Publish",
+          status: showPublish ? "active" : "pending",
+          locked: !anyImageDone,
+          hint: anyImageDone
+            ? "Click to open the Publish panel"
+            : "Generate at least one scene image first",
+        },
+      ]
+    : [];
+
+  function handleWorkflowStageClick(stageId) {
+    if (stageId === "characters") setShowCharacters(true);
+    if (stageId === "illustrate") {
+      setShowCharacters(false);
+      setShowPublish(false);
+      document
+        .querySelector(".scene-list")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    if (stageId === "publish" && anyImageDone) setShowPublish(true);
+  }
 
   useEffect(() => {
     if (
@@ -266,6 +356,8 @@ export default function App() {
           <h2>{novella.title}</h2>
           <button onClick={() => navigate("/")}>Back to all novellas</button>
 
+          <WorkflowBar stages={workflowStages} onStageClick={handleWorkflowStageClick} />
+
           {novella.recommended_engine_id && (
             <div className="story-recommendation">
               <p>
@@ -305,7 +397,10 @@ export default function App() {
 
           {breakingDown && (
             <div className="breakdown-progress">
-              <p>Breaking the story into scenes…</p>
+              <p>
+                <span className="breakdown-spinner" aria-hidden="true" />
+                Breaking the story into scenes…
+              </p>
               {novella.breakdown_progress ? (
                 <>
                   <progress
@@ -318,7 +413,11 @@ export default function App() {
                   </span>
                 </>
               ) : (
-                <span>starting…</span>
+                <span>
+                  {breakdownElapsed < 5
+                    ? "starting…"
+                    : `still working… (${breakdownElapsed}s - large local models can take a few minutes per chunk)`}
+                </span>
               )}
             </div>
           )}
