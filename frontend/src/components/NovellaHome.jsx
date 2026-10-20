@@ -2,18 +2,32 @@ import { useState } from "react";
 
 export default function NovellaHome({ novellas, onSelect, onDelete, onCancel }) {
   const [busyId, setBusyId] = useState(null);
+  // window.confirm() doesn't reliably work inside Tauri's webview (no native
+  // dialog delegate wired up on the Rust side) - it silently does nothing,
+  // which looked exactly like a dead button. Two-step in-UI confirmation
+  // instead, so it behaves identically in the browser and the packaged app.
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   if (!novellas.length) return null;
 
   async function handleDeleteClick(e, novella) {
     e.stopPropagation();
-    if (!window.confirm(`Delete "${novella.title}"? This can't be undone.`)) return;
+    if (confirmDeleteId !== novella.id) {
+      setConfirmDeleteId(novella.id);
+      return;
+    }
+    setConfirmDeleteId(null);
     setBusyId(novella.id);
     try {
       await onDelete(novella.id);
     } finally {
       setBusyId(null);
     }
+  }
+
+  function handleCancelDeleteClick(e) {
+    e.stopPropagation();
+    setConfirmDeleteId(null);
   }
 
   async function handleCancelClick(e, novella) {
@@ -37,7 +51,13 @@ export default function NovellaHome({ novellas, onSelect, onDelete, onCancel }) 
             n.generating_count > 0;
           return (
             <li key={n.id}>
-              <button className="novella-link" onClick={() => onSelect(n.id)}>
+              <button
+                className="novella-link"
+                onClick={() => {
+                  onSelect(n.id);
+                  setConfirmDeleteId(null);
+                }}
+              >
                 <span className="novella-link-title">{n.title}</span>
                 <span className={`status status-${n.status}`}>{n.status}</span>
                 <span className="novella-link-meta">
@@ -58,6 +78,15 @@ export default function NovellaHome({ novellas, onSelect, onDelete, onCancel }) 
                     Stop
                   </button>
                 )}
+                {confirmDeleteId === n.id && (
+                  <button
+                    type="button"
+                    className="novella-sidebar-action"
+                    onClick={handleCancelDeleteClick}
+                  >
+                    Cancel
+                  </button>
+                )}
                 <button
                   type="button"
                   className="novella-sidebar-action novella-sidebar-action-delete"
@@ -65,7 +94,7 @@ export default function NovellaHome({ novellas, onSelect, onDelete, onCancel }) 
                   onClick={(e) => handleDeleteClick(e, n)}
                   title="Delete this novella"
                 >
-                  Delete
+                  {confirmDeleteId === n.id ? "Confirm delete?" : "Delete"}
                 </button>
               </div>
             </li>
