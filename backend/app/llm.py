@@ -142,6 +142,7 @@ async def breakdown_into_scenes(
     on_chunk_done: Optional[Callable[[int, int, list[dict]], Awaitable[None]]] = None,
     provider: Optional[TextProvider] = None,
     on_live_text: Optional[Callable[[str], Awaitable[None]]] = None,
+    known_characters: Optional[list[dict]] = None,
 ) -> list[dict]:
     provider = provider or providers.resolve_default_provider()
     chunks = _chunk_text(text)
@@ -152,13 +153,29 @@ async def breakdown_into_scenes(
     if target_scene_count and target_scene_count > 0:
         per_chunk_target = max(1, round(target_scene_count / total))
 
+    character_context = ""
+    character_lines = [
+        f"- {c['name']}: {c['visual_description']}"
+        for c in (known_characters or [])
+        if c.get("visual_description")
+    ]
+    if character_lines:
+        character_context = (
+            "Known characters in this story, with their established physical/"
+            "costume descriptions - when one of them appears in a scene, "
+            "reuse these exact details in that scene's image_prompt for "
+            "visual consistency, rather than describing them differently:\n"
+            + "\n".join(character_lines)
+            + "\n\n"
+        )
+
     for i, chunk in enumerate(chunks):
-        user_content = chunk
+        user_content = character_context + chunk
         if per_chunk_target is not None:
             plural = "s" if per_chunk_target != 1 else ""
             user_content = (
                 f"(Extract approximately {per_chunk_target} scene{plural} "
-                f"from the passage below.)\n\n{chunk}"
+                f"from the passage below.)\n\n{user_content}"
             )
 
         on_token = _throttled(on_live_text) if on_live_text is not None else None

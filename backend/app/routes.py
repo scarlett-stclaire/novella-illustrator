@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from . import catalogue, characters_llm, export, ingest, llm, imagegen, providers, recommend, settings_store, storage
+from .providers import TextProvider
 from .models import (
     AddCharacterRequest,
     AddSceneRequest,
@@ -29,6 +30,31 @@ from .models import (
 )
 
 router = APIRouter(prefix="/api")
+
+# Tracks every background asyncio.Task spawned for a novella (breakdown,
+# character extraction/generation, scene generation), so a "stop" action can
+# actually cancel whatever's still live - not just reset the status fields,
+# which alone would leave an orphaned task running in the background (still
+# occupying Ollama/ComfyUI's single job slot) even after the UI stopped
+# showing it. A dev-server reload kills these anyway (that's the original,
+# much more common way a novella ends up stuck - this also covers the
+# ordinary "I changed my mind, stop generating" case).
+_active_tasks: dict[str, set[asyncio.Task]] = {}
+
+
+def _track_task(novella_id: str, task: asyncio.Task) -> None:
+    _active_tasks.setdefault(novella_id, set()).add(task)
+
+    def _discard(_: asyncio.Task) -> None:
+        _active_tasks.get(novella_id, set()).discard(task)
+
+    task.add_done_callback(_discard)
+
+
+def _create_tracked_task(novella_id: str, coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _track_task(novella_id, task)
+    return task
 
 
 @router.get("/health")
@@ -253,7 +279,9 @@ async def get_novellas():
             title=n.title,
             scene_count=len(n.scenes),
             status=n.status,
-            generating_count=sum(1 for s in n.scenes if s.status == "generating"),
+            character_status=n.character_status,
+            generating_count=sum(1 for s in n.scenes if s.status == "generating")
+            + sum(1 for c in n.characters if c.status == "generating"),
             created_at=n.created_at,
         )
         for n in novellas
@@ -266,6 +294,69 @@ async def get_novella(novella_id: str):
     if novella is None:
         raise HTTPException(status_code=404, detail="Novella not found")
     return novella
+
+
+@router.delete("/novellas/{novella_id}")
+async def delete_novella(novella_id: str):
+    for task in list(_active_tasks.get(novella_id, set())):
+        task.cancel()
+    deleted = storage.delete_novella(novella_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Novella not found")
+    return {"ok": True}
+
+
+@router.post("/novellas/{novella_id}/cancel", response_model=Novella)
+async def cancel_novella_jobs(novella_id: str):
+    """Stops whatever's currently running for this novella - breakdown,
+    character extraction, or any in-progress scene/character image
+    generation - and resets status so the UI isn't left spinning forever.
+
+    Cancels any still-live background task, but also unconditionally resets
+    the status fields regardless: the most common real case this exists for
+    is a task that's already dead (e.g. killed by a dev-server reload mid-
+    generation - a known, recurring issue during development) with nothing
+    left to actually cancel but a permanently stuck status flag."""
+    novella = storage.load_novella(novella_id)
+    if novella is None:
+        raise HTTPException(status_code=404, detail="Novella not found")
+
+    for task in list(_active_tasks.get(novella_id, set())):
+        task.cancel()
+
+    updates = {}
+    if novella.status == "breaking_down":
+        updates.update(
+            status="error",
+            breakdown_error="Stopped by user",
+            breakdown_progress=None,
+            breakdown_live_text=None,
+        )
+    if novella.character_status == "extracting":
+        updates.update(
+            character_status="error",
+            character_error="Stopped by user",
+            character_extraction_live_text=None,
+        )
+    if updates:
+        storage.update_novella(novella_id, **updates)
+
+    for scene in novella.scenes:
+        if scene.status == "generating":
+            storage.update_scene(
+                novella_id, scene.id, status="error", error="Stopped by user", progress=None
+            )
+    for character in novella.characters:
+        if character.status == "generating":
+            storage.update_character(
+                novella_id,
+                character.id,
+                status="error",
+                error="Stopped by user",
+                progress=None,
+            )
+
+    return storage.load_novella(novella_id)
 
 
 @router.post("/novellas/{novella_id}/breakdown", response_model=Novella)
@@ -291,14 +382,15 @@ async def breakdown_novella(
         text_provider_id=text_provider_id,
     )
 
-    asyncio.create_task(
+    _create_tracked_task(
+        novella_id,
         _run_breakdown(
             novella_id,
             novella.text,
             novella.target_scene_count,
             text_provider_id,
             ollama_model,
-        )
+        ),
     )
 
     return novella
@@ -353,12 +445,36 @@ async def _run_breakdown(
             if text_provider_id
             else providers.resolve_default_provider()
         )
+
+        # Characters inform the breakdown (correct visual details baked into
+        # each scene's image_prompt from the start, not patched on afterward
+        # by apply_characters_to_scenes's name-matching) - so run extraction
+        # first if it's never been done for this novella. Skipped if already
+        # extracted (manually beforehand, or on a re-run) - never re-extracts
+        # automatically, matching apply-to-scenes' own "don't clobber manual
+        # edits" stance.
+        current = storage.load_novella(novella_id)
+        if current is not None and current.character_status == "none":
+            storage.update_novella(
+                novella_id, character_status="extracting", character_error=None
+            )
+            await _run_character_extraction(novella_id, text, provider)
+            current = storage.load_novella(novella_id)
+
+        known_characters = None
+        if current is not None and current.characters:
+            known_characters = [
+                {"name": c.name, "visual_description": c.visual_description}
+                for c in current.characters
+            ]
+
         await llm.breakdown_into_scenes(
             text,
             target_scene_count=target_scene_count,
             on_chunk_done=on_chunk_done,
             provider=provider,
             on_live_text=on_live_text,
+            known_characters=known_characters,
         )
         storage.update_novella(
             novella_id, status="ready", breakdown_progress=None, breakdown_live_text=None
@@ -385,22 +501,34 @@ async def extract_characters(novella_id: str, text_provider_id: Optional[str] = 
     novella = storage.update_novella(
         novella_id, character_status="extracting", character_error=None
     )
-    asyncio.create_task(
-        _run_character_extraction(novella_id, novella.text, text_provider_id)
+    provider = (
+        providers.get_provider(text_provider_id)
+        if text_provider_id
+        else providers.resolve_default_provider()
+    )
+    _create_tracked_task(
+        novella_id, _run_character_extraction(novella_id, novella.text, provider)
     )
     return novella
 
 
 async def _run_character_extraction(
-    novella_id: str, text: str, text_provider_id: Optional[str]
+    novella_id: str, text: str, provider: TextProvider
 ) -> None:
+    """Runs one character-extraction pass and merges the result into
+    storage. Called both from the /characters/extract endpoint and inline
+    from _run_breakdown (auto-sequencing characters before breakdown) - the
+    caller is responsible for having already set character_status to
+    "extracting" and for resolving `provider`, so this can be awaited
+    directly as a sub-step without its own asyncio.create_task."""
+
+    async def on_live_text(text: str) -> None:
+        storage.update_novella(novella_id, character_extraction_live_text=text)
+
     try:
-        provider = (
-            providers.get_provider(text_provider_id)
-            if text_provider_id
-            else providers.resolve_default_provider()
+        raw_characters = await characters_llm.extract_characters(
+            text, provider, on_live_text=on_live_text
         )
-        raw_characters = await characters_llm.extract_characters(text, provider)
 
         current = storage.load_novella(novella_id)
         if current is None:
@@ -419,11 +547,17 @@ async def _run_character_extraction(
                 merged.append(Character(id=str(uuid.uuid4()), **item))
 
         storage.update_novella(
-            novella_id, characters=merged, character_status="ready"
+            novella_id,
+            characters=merged,
+            character_status="ready",
+            character_extraction_live_text=None,
         )
     except Exception as exc:  # noqa: BLE001
         storage.update_novella(
-            novella_id, character_status="error", character_error=str(exc)
+            novella_id,
+            character_status="error",
+            character_error=str(exc),
+            character_extraction_live_text=None,
         )
 
 
@@ -534,8 +668,9 @@ async def generate_character_image(
     updated = storage.update_character(
         novella_id, character_id, status="generating", error=None, progress=None
     )
-    asyncio.create_task(
-        _run_character_generation(novella_id, character_id, prompt, effective_engine_id)
+    _create_tracked_task(
+        novella_id,
+        _run_character_generation(novella_id, character_id, prompt, effective_engine_id),
     )
     return updated
 
@@ -839,14 +974,15 @@ async def generate_scene_image(
         novella_id, scene_id, status="generating", error=None, progress=None
     )
 
-    asyncio.create_task(
+    _create_tracked_task(
+        novella_id,
         _run_generation(
             novella_id,
             scene_id,
             scene.image_prompt,
             effective_engine_id,
             reference_image_path,
-        )
+        ),
     )
 
     return novella
@@ -890,8 +1026,8 @@ async def regenerate_scene_image(
         feedback=payload.feedback,
     )
 
-    asyncio.create_task(
-        _run_generation(novella_id, scene_id, final_prompt, effective_engine_id)
+    _create_tracked_task(
+        novella_id, _run_generation(novella_id, scene_id, final_prompt, effective_engine_id)
     )
 
     return novella

@@ -65,6 +65,9 @@ class Novella(BaseModel):
     characters: list[Character] = []
     character_status: str = "none"  # none | extracting | ready | error
     character_error: Optional[str] = None
+    # Same live-streaming idea as breakdown_live_text, for the character
+    # extraction pass (which now runs before breakdown, see routes.py).
+    character_extraction_live_text: Optional[str] = None
     created_at: float = Field(default_factory=time.time)
 
 
@@ -141,5 +144,6 @@ class NovellaSummary(BaseModel):
     title: str
     scene_count: int
     status: str
+    character_status: str
     generating_count: int
     created_at: float

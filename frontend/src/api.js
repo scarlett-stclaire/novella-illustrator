@@ -59,6 +59,8 @@ export const api = {
       }),
     }),
   getNovella: (id) => request(`/novellas/${id}`),
+  deleteNovella: (id) => request(`/novellas/${id}`, { method: "DELETE" }),
+  cancelNovella: (id) => request(`/novellas/${id}/cancel`, { method: "POST" }),
   breakdown: (id, textProviderId, ollamaModel) => {
     const params = new URLSearchParams();
     if (textProviderId) params.set("text_provider_id", textProviderId);

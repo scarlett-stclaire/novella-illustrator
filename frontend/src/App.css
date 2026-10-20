@@ -638,6 +638,25 @@ select {
   color: var(--gray);
 }
 
+.stop-job-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--oxblood);
+  color: var(--oxblood);
+  border-radius: var(--radius-pill);
+  padding: var(--sp-1) var(--sp-3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.stop-job-btn:hover {
+  background: var(--oxblood);
+  color: var(--white);
+}
+
 .breakdown-progress {
   margin: var(--sp-4) 0;
 }
@@ -1410,6 +1429,33 @@ select {
 .novella-sidebar-item-meta {
   font-size: 11px;
   color: var(--gray);
+}
+
+.novella-sidebar-item-actions {
+  display: flex;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3) var(--sp-2);
+}
+
+.novella-sidebar-action {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gray);
+  cursor: pointer;
+}
+
+.novella-sidebar-action:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.novella-sidebar-action-delete:hover {
+  color: var(--oxblood);
 }
 
 .breakdown-live-text {

@@ -1,4 +1,5 @@
 import json
+import shutil
 import threading
 from pathlib import Path
 
@@ -58,6 +59,20 @@ def novella_export_dir(novella_id: str) -> Path:
     path = EXPORTS_DIR / novella_id
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def delete_novella(novella_id: str) -> bool:
+    """Removes the novella's JSON record plus its generated images/exports.
+    Returns False if it didn't exist (caller can 404); True otherwise -
+    whether or not there happened to be any image/export files to clean up."""
+    with _lock:
+        path = _novella_path(novella_id)
+        if not path.exists():
+            return False
+        path.unlink()
+        shutil.rmtree(IMAGES_DIR / novella_id, ignore_errors=True)
+        shutil.rmtree(EXPORTS_DIR / novella_id, ignore_errors=True)
+        return True
 
 
 def update_novella(novella_id: str, **fields) -> Novella | None:

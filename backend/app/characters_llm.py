@@ -3,10 +3,12 @@ helpers so long stories are processed the same way scene breakdown is.
 Name-variant merging (F12) is a separate, deterministic step - see
 entity_resolution.py - not an LLM task."""
 
+from typing import Awaitable, Callable, Optional
+
 from pydantic import BaseModel, Field
 
 from .entity_resolution import merge_characters
-from .llm import _chunk_text, _parse_structured
+from .llm import _chunk_text, _parse_structured, _throttled
 from .providers import TextProvider
 
 SYSTEM_PROMPT = """You are a literary analyst identifying named characters in a \
@@ -52,13 +54,24 @@ class CharacterList(BaseModel):
     characters: list[ExtractedCharacter]
 
 
-async def extract_characters(text: str, provider: TextProvider) -> list[dict]:
+async def extract_characters(
+    text: str,
+    provider: TextProvider,
+    on_live_text: Optional[Callable[[str], Awaitable[None]]] = None,
+) -> list[dict]:
     chunks = _chunk_text(text)
     raw_items: list[dict] = []
     for chunk in chunks:
+        on_token = _throttled(on_live_text) if on_live_text is not None else None
         content = await provider.chat(
-            SYSTEM_PROMPT, chunk, json_mode=True, response_schema=CharacterList
+            SYSTEM_PROMPT,
+            chunk,
+            json_mode=True,
+            response_schema=CharacterList,
+            on_token=on_token,
         )
+        if on_live_text is not None:
+            await on_live_text(content)
         parsed = _parse_structured(content, CharacterList, "characters")
         raw_items.extend(parsed)
     return merge_characters(raw_items)

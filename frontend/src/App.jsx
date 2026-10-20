@@ -21,6 +21,27 @@ function novellaIdFromUrl() {
   return match ? match[1] : null;
 }
 
+// A chunk can take minutes with a large local model, and per-chunk progress
+// (where available) only moves between whole chunks - a single-chunk story
+// (the common case) would otherwise show flat, static text for the entire
+// wait and read as frozen even though it's working. Shared by both the
+// breakdown and character-extraction waits.
+function useElapsedSeconds(active) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      setElapsed(0);
+      return;
+    }
+    const start = Date.now();
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [active]);
+  return elapsed;
+}
+
 export default function App() {
   const [novellaId, setNovellaId] = useState(novellaIdFromUrl());
   const [isSettingsRoute, setIsSettingsRoute] = useState(
@@ -129,24 +150,8 @@ export default function App() {
   const anyCharacterGenerating =
     novella?.characters?.some((c) => c.status === "generating") ?? false;
 
-  // A chunk can take minutes with a large local model and the chunk-count
-  // progress bar only moves between whole chunks, so a single-chunk story
-  // (the common case) shows flat "starting..." text for the entire wait -
-  // reads as frozen even though it's working. An elapsed-time counter at
-  // least shows it's alive; see also the workflow bar below for overall
-  // stage context during the same wait.
-  const [breakdownElapsed, setBreakdownElapsed] = useState(0);
-  useEffect(() => {
-    if (!breakingDown) {
-      setBreakdownElapsed(0);
-      return;
-    }
-    const start = Date.now();
-    const interval = setInterval(() => {
-      setBreakdownElapsed(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [breakingDown]);
+  const breakdownElapsed = useElapsedSeconds(breakingDown && !extractingCharacters);
+  const characterExtractionElapsed = useElapsedSeconds(extractingCharacters);
 
   const liveTextRef = useRef(null);
   useEffect(() => {
@@ -154,6 +159,13 @@ export default function App() {
       liveTextRef.current.scrollTop = liveTextRef.current.scrollHeight;
     }
   }, [novella?.breakdown_live_text]);
+
+  const characterLiveTextRef = useRef(null);
+  useEffect(() => {
+    if (characterLiveTextRef.current) {
+      characterLiveTextRef.current.scrollTop = characterLiveTextRef.current.scrollHeight;
+    }
+  }, [novella?.character_extraction_live_text]);
 
   const hasScenes = (novella?.scenes.length ?? 0) > 0;
   const hasCharacters =
@@ -165,19 +177,9 @@ export default function App() {
     ? [
         { id: "story", label: "Story", status: "done" },
         {
-          id: "breakdown",
-          label: "Breakdown",
-          status:
-            novella.status === "error"
-              ? "error"
-              : breakingDown
-              ? "active"
-              : hasScenes
-              ? "done"
-              : "pending",
-          hint: "Scene breakdown",
-        },
-        {
+          // Characters now run before breakdown (so scene image_prompts can
+          // reuse established visual descriptions from the start - see
+          // routes.py's _run_breakdown) - ordered here to match.
           id: "characters",
           label: "Characters",
           status: extractingCharacters
@@ -188,6 +190,19 @@ export default function App() {
             ? "done"
             : "pending",
           hint: "Click to open the Characters panel",
+        },
+        {
+          id: "breakdown",
+          label: "Breakdown",
+          status:
+            novella.status === "error"
+              ? "error"
+              : breakingDown && !extractingCharacters
+              ? "active"
+              : hasScenes
+              ? "done"
+              : "pending",
+          hint: "Scene breakdown",
         },
         {
           id: "illustrate",
@@ -255,6 +270,22 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleDeleteNovella(id) {
+    await api.deleteNovella(id);
+    setNovellas((prev) => prev.filter((n) => n.id !== id));
+    if (novellaId === id) {
+      navigate("/");
+    }
+  }
+
+  async function handleCancelNovella(id) {
+    const updated = await api.cancelNovella(id);
+    if (novellaId === id) {
+      setNovella(updated);
+    }
+    api.listNovellas().then(setNovellas).catch(() => {});
   }
 
   async function handleAddScene({ summary, imagePrompt, afterSceneId }) {
@@ -334,6 +365,8 @@ export default function App() {
         activeNovellaId={novellaId}
         onSelect={(id) => navigate(`/novella/${id}`)}
         onHome={() => navigate("/")}
+        onDelete={handleDeleteNovella}
+        onCancel={handleCancelNovella}
       />
       <nav className="app-nav">
         <button className="home-link wordmark" onClick={() => navigate("/")}>
@@ -370,6 +403,8 @@ export default function App() {
           <NovellaHome
             novellas={novellas}
             onSelect={(id) => navigate(`/novella/${id}`)}
+            onDelete={handleDeleteNovella}
+            onCancel={handleCancelNovella}
           />
         </>
       )}
@@ -418,7 +453,37 @@ export default function App() {
             </div>
           )}
 
-          {breakingDown && (
+          {extractingCharacters && (
+            <div className="breakdown-progress">
+              <p>
+                <span className="breakdown-spinner" aria-hidden="true" />
+                Finding characters (runs before breakdown, so scenes can use
+                their established appearance)…
+              </p>
+              <span>
+                {characterExtractionElapsed < 5
+                  ? "starting…"
+                  : `still working… (${characterExtractionElapsed}s - large local models can take a few minutes per chunk)`}
+              </span>
+              <button
+                type="button"
+                className="stop-job-btn"
+                onClick={() => handleCancelNovella(novella.id)}
+              >
+                Stop
+              </button>
+            </div>
+          )}
+          {extractingCharacters && novella.character_extraction_live_text && (
+            <details className="breakdown-live-text" open>
+              <summary>What the model is generating right now</summary>
+              <pre ref={characterLiveTextRef}>
+                {novella.character_extraction_live_text}
+              </pre>
+            </details>
+          )}
+
+          {breakingDown && !extractingCharacters && (
             <div className="breakdown-progress">
               <p>
                 <span className="breakdown-spinner" aria-hidden="true" />
@@ -442,9 +507,16 @@ export default function App() {
                     : `still working… (${breakdownElapsed}s - large local models can take a few minutes per chunk)`}
                 </span>
               )}
+              <button
+                type="button"
+                className="stop-job-btn"
+                onClick={() => handleCancelNovella(novella.id)}
+              >
+                Stop
+              </button>
             </div>
           )}
-          {breakingDown && novella.breakdown_live_text && (
+          {breakingDown && !extractingCharacters && novella.breakdown_live_text && (
             <details className="breakdown-live-text" open>
               <summary>What the model is generating right now</summary>
               <pre ref={liveTextRef}>{novella.breakdown_live_text}</pre>
