@@ -223,6 +223,17 @@ fn stop_all(state: &ManagedProcesses) {
     }
 }
 
+/// Explicit "quit the whole app" action invokable from the UI, rather than
+/// relying on the window close button or Cmd+Q being obvious/reliable ways
+/// to actually stop everything - stops the managed processes first (same as
+/// every other exit path), then exits the app process itself.
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    log::info!("quit_app invoked from the UI - stopping managed processes");
+    stop_all(PROCESSES.get().expect("PROCESSES initialized before run()"));
+    app.exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let processes = PROCESSES.get_or_init(|| ManagedProcesses {
@@ -244,6 +255,7 @@ pub fn run() {
     .expect("failed to register signal handler");
 
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![quit_app])
         .setup(move |app| {
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
@@ -261,6 +273,19 @@ pub fn run() {
                 stop_all(PROCESSES.get().expect("PROCESSES initialized before run()"));
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while building tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            // Cmd+Q / the app menu's Quit / Dock > Quit are a Cocoa-level
+            // "application should terminate" request, not a window close and
+            // not a Unix signal - WindowEvent::CloseRequested and the ctrlc
+            // SIGTERM handler above both miss it entirely. stop_all() is
+            // safe to call more than once (each Option<Child> is just a
+            // no-op the second time), so overlapping with the other two
+            // handlers on a given quit sequence is harmless.
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                log::info!("app exit requested (e.g. Cmd+Q) - stopping managed processes");
+                stop_all(PROCESSES.get().expect("PROCESSES initialized before run()"));
+            }
+        });
 }

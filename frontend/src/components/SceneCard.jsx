@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, resolveAssetUrl } from "../api.js";
 import Panel, { SCENE_TYPE_TO_ROOM } from "./Panel.jsx";
 
@@ -27,6 +27,12 @@ export default function SceneCard({
   );
   const [recommendation, setRecommendation] = useState(null);
   const [recommending, setRecommending] = useState(false);
+  const logRef = useRef(null);
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [scene.generation_log]);
 
   const recommendedEngine = engines?.find((e) => e.id === scene.recommended_engine_id);
   const room = SCENE_TYPE_TO_ROOM[scene.scene_type] || "spires";
@@ -142,13 +148,20 @@ export default function SceneCard({
             <>
               <progress value={scene.progress.value} max={scene.progress.max} />
               <span>
+                {scene.generation_stage ? `${scene.generation_stage} — ` : ""}
                 step {scene.progress.value}/{scene.progress.max}
               </span>
             </>
           ) : (
-            <span>queued…</span>
+            <span>{scene.generation_stage || "queued…"}</span>
           )}
         </div>
+      )}
+      {scene.status === "generating" && scene.generation_log && (
+        <details className="breakdown-live-text" open>
+          <summary>ComfyUI log</summary>
+          <pre ref={logRef}>{scene.generation_log}</pre>
+        </details>
       )}
       {scene.error && <p className="scene-error">{scene.error}</p>}
       {scene.image_path && (

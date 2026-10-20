@@ -4,7 +4,7 @@
 // on Windows), so relative fetches never reach the backend at all. Detect that
 // case and talk to the backend directly; the backend's CORS is already
 // wide-open (see main.py) so this works without extra configuration.
-const isTauri =
+export const isTauri =
   typeof window !== "undefined" &&
   (location.protocol === "tauri:" || location.hostname === "tauri.localhost");
 const ORIGIN = isTauri ? "http://127.0.0.1:8000" : "";
@@ -16,6 +16,16 @@ const BASE = `${ORIGIN}/api`;
 // packaged app too.
 export function resolveAssetUrl(path) {
   return path ? `${ORIGIN}${path}` : path;
+}
+
+// Explicit full-app-quit action - only meaningful inside the packaged app
+// (there's no "app process" to quit when this is just a browser tab). Stops
+// ollama/ComfyUI/the backend first, then exits the Tauri process itself -
+// see src-tauri/src/lib.rs's quit_app command.
+export async function quitApp() {
+  if (!isTauri) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("quit_app");
 }
 
 async function request(path, options) {

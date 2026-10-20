@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "./api.js";
+import { api, isTauri, quitApp } from "./api.js";
 import UploadForm from "./components/UploadForm.jsx";
 import SceneList from "./components/SceneList.jsx";
 import SourceCoverage from "./components/SourceCoverage.jsx";
@@ -50,6 +50,7 @@ export default function App() {
   const [novella, setNovella] = useState(null);
   const [novellas, setNovellas] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [confirmQuit, setConfirmQuit] = useState(false);
   const [error, setError] = useState(null);
   const [health, setHealth] = useState(null);
   const [showCoverage, setShowCoverage] = useState(false);
@@ -377,6 +378,31 @@ export default function App() {
           <button className="home-link settings-link" onClick={() => navigate("/settings")}>
             Settings
           </button>
+          {isTauri && (
+            <>
+              {confirmQuit && (
+                <button
+                  className="home-link quit-cancel-link"
+                  onClick={() => setConfirmQuit(false)}
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                className="home-link quit-link"
+                onClick={() => {
+                  if (!confirmQuit) {
+                    setConfirmQuit(true);
+                    return;
+                  }
+                  quitApp();
+                }}
+                title="Quits the app completely, including Ollama/ComfyUI/the backend it started"
+              >
+                {confirmQuit ? "Really quit?" : "Quit"}
+              </button>
+            </>
+          )}
         </div>
       </nav>
 

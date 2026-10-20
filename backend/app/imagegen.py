@@ -28,6 +28,35 @@ ANATOMY_FIX_HINT = os.environ.get(
     "finger count, no distortion",
 )
 
+# Human-readable labels for the ComfyUI node class_types this project's
+# engines actually use - shown live as "stage" while a generation runs, so a
+# multi-node workflow (e.g. SDXL + ADetailer's sample -> decode -> fix face
+# -> fix hands) reads as real progress, not one opaque step counter that
+# goes quiet between nodes. Falls back to the raw class_type for anything
+# not listed here (e.g. a future engine), rather than hiding it.
+_FRIENDLY_STAGE_NAMES = {
+    "CheckpointLoaderSimple": "Loading model",
+    "UNETLoader": "Loading model",
+    "CLIPTextEncode": "Encoding prompt",
+    "EmptyLatentImage": "Preparing canvas",
+    "KSampler": "Generating image",
+    "VAEDecode": "Decoding image",
+    "UltralyticsDetectorProvider": "Loading detector",
+    "FaceDetailer": "Fixing details",
+    "SaveImage": "Saving",
+    "CLIPVisionLoader": "Loading reference model",
+    "IPAdapterModelLoader": "Loading character reference",
+    "LoadImage": "Loading reference image",
+    "IPAdapterAdvanced": "Applying character reference",
+}
+
+# ComfyUI's own process log (scripts/start.sh and the Tauri app both redirect
+# its stdout/stderr here) - tailed live during generation as the literal
+# "log from the model" a user can watch, on top of the structured progress/
+# stage signals above. Best-effort: a non-standard setup without this file
+# just means on_log_line never fires, same as any other optional callback.
+COMFYUI_LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "comfyui.log"
+
 POLL_INTERVAL_SECONDS = 2
 # Two-phase timeout: ComfyUI processes one job at a time, so queueing several
 # scenes is normal and a job can sit waiting a long while before it starts -
@@ -64,14 +93,23 @@ async def _upload_reference_image(path: Path) -> str:
 async def _relay_progress(
     ws: websockets.WebSocketClientProtocol,
     prompt_id: str,
+    workflow: dict,
     on_progress: Optional[ProgressCallback],
+    on_stage: Optional[Callable[[str], Awaitable[None]]],
     on_first_progress: Callable[[], None],
 ) -> None:
-    """Forwards this prompt's `progress` (sampling step) events from ComfyUI's
-    websocket to on_progress, and separately signals on_first_progress once
-    (used to switch the caller's timeout from "waiting in queue" to "actively
-    generating"). Best-effort: completion/results still come from polling
-    /history, so any failure here just means no progress bar/early signal."""
+    """Forwards this prompt's events from ComfyUI's websocket:
+    - `progress` (sampling step within whichever node is currently running)
+      to on_progress, and separately signals on_first_progress once (used to
+      switch the caller's timeout from "waiting in queue" to "actively
+      generating").
+    - `executing` (which node just started) to on_stage, as a friendly label
+      - this is what actually explains the quiet stretches between/beyond
+      progress events (loading a detector model, running FaceDetailer's
+      detection step before its own internal sampling starts, etc).
+    Best-effort throughout: completion/results still come from polling
+    /history, so any failure here just means a quieter UI, not a failed
+    generation."""
     seen_progress = False
     try:
         async for raw in ws:
@@ -90,7 +128,42 @@ async def _relay_progress(
                     on_first_progress()
                 if on_progress is not None:
                     await on_progress(data.get("value", 0), data.get("max", 0))
+            elif msg.get("type") == "executing" and on_stage is not None:
+                node_id = data.get("node")
+                if node_id is not None:
+                    class_type = workflow.get(node_id, {}).get("class_type", node_id)
+                    await on_stage(_FRIENDLY_STAGE_NAMES.get(class_type, class_type))
     except websockets.WebSocketException:
+        return
+
+
+async def _relay_comfyui_log(
+    on_log_line: Callable[[str], Awaitable[None]], stop_event: asyncio.Event
+) -> None:
+    """Tails ComfyUI's own process log while a generation runs. Polls rather
+    than following a file handle across process restarts (ComfyUI itself is
+    a long-lived separate process, but the log file's inode doesn't change
+    under normal operation, so a plain growing-size check is enough)."""
+    if not COMFYUI_LOG_PATH.exists():
+        return
+    try:
+        offset = COMFYUI_LOG_PATH.stat().st_size
+        buffer = ""
+        while not stop_event.is_set():
+            await asyncio.sleep(1)
+            size = COMFYUI_LOG_PATH.stat().st_size
+            if size <= offset:
+                continue
+            with COMFYUI_LOG_PATH.open("r", errors="replace") as f:
+                f.seek(offset)
+                new_text = f.read()
+            offset = size
+            buffer += new_text
+            # A live "what's happening now" window, not a full transcript -
+            # capped so a long-running job doesn't grow this unboundedly.
+            buffer = buffer[-4000:]
+            await on_log_line(buffer)
+    except OSError:
         return
 
 
@@ -101,6 +174,8 @@ async def generate_image(
     negative: str = DEFAULT_NEGATIVE_PROMPT,
     reference_image_path: Optional[Path] = None,
     on_progress: Optional[ProgressCallback] = None,
+    on_stage: Optional[Callable[[str], Awaitable[None]]] = None,
+    on_log_line: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> None:
     engine = ENGINES[engine_id]
     reference_image_filename = None
@@ -127,7 +202,12 @@ async def generate_image(
         deadline = time.monotonic() + EXECUTION_TIMEOUT_SECONDS
 
     progress_task = None
+    log_task = None
+    log_stop_event = asyncio.Event()
     try:
+        if on_log_line is not None:
+            log_task = asyncio.create_task(_relay_comfyui_log(on_log_line, log_stop_event))
+
         async with httpx.AsyncClient(timeout=60) as client:
             queue_response = await client.post(
                 f"{COMFYUI_BASE_URL}/prompt",
@@ -138,7 +218,9 @@ async def generate_image(
 
             if ws is not None:
                 progress_task = asyncio.create_task(
-                    _relay_progress(ws, prompt_id, on_progress, on_first_progress)
+                    _relay_progress(
+                        ws, prompt_id, workflow, on_progress, on_stage, on_first_progress
+                    )
                 )
 
             while time.monotonic() < deadline:
@@ -167,6 +249,11 @@ async def generate_image(
 
         raise TimeoutError(f"ComfyUI generation timed out for prompt_id={prompt_id}")
     finally:
+        log_stop_event.set()
+        if log_task is not None:
+            log_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await log_task
         if progress_task is not None:
             progress_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

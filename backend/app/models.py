@@ -17,6 +17,13 @@ class Scene(BaseModel):
     status: str = "pending"  # pending | generating | done | error
     error: Optional[str] = None
     progress: Optional[Progress] = None
+    # Which ComfyUI node is currently running (e.g. "Generating image",
+    # "Fixing details") - fills the gaps between/before progress events,
+    # which only fire during a node's own internal sampling steps.
+    generation_stage: Optional[str] = None
+    # Live tail of ComfyUI's own process log while this scene generates -
+    # the literal "log from the model" view, same idea as breakdown_live_text.
+    generation_log: Optional[str] = None
     source_excerpt: Optional[str] = None
     manual: bool = False  # True for scenes added by hand, not by the LLM
     feedback: Optional[str] = None  # correction notes from the last regenerate
@@ -42,6 +49,8 @@ class Character(BaseModel):
     status: str = "ready"  # ready | generating | error (image generation)
     error: Optional[str] = None
     progress: Optional[Progress] = None
+    generation_stage: Optional[str] = None
+    generation_log: Optional[str] = None
     engine_id: Optional[str] = None  # which image-gen engine made the current image
 
 

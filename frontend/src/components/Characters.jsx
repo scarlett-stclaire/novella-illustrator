@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, resolveAssetUrl } from "../api.js";
 import Panel from "./Panel.jsx";
 
@@ -180,6 +180,12 @@ function CharacterCard({ novellaId, character, engines, onUpdate }) {
     character.engine_id || engines[0]?.id || ""
   );
   const [busy, setBusy] = useState(false);
+  const logRef = useRef(null);
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [character.generation_log]);
 
   async function handleSave() {
     setBusy(true);
@@ -251,6 +257,13 @@ function CharacterCard({ novellaId, character, engines, onUpdate }) {
         alt={character.name}
         ghostLabel={!character.image_path ? "NO PORTRAIT YET" : undefined}
       />
+      {character.image_path && character.engine_id && (
+        <p className="character-engine-used">
+          Generated with{" "}
+          {engines.find((e) => e.id === character.engine_id)?.label ||
+            character.engine_id}
+        </p>
+      )}
 
       {!editing ? (
         <>
@@ -295,32 +308,56 @@ function CharacterCard({ novellaId, character, engines, onUpdate }) {
             <>
               <progress value={character.progress.value} max={character.progress.max} />
               <span>
+                {character.generation_stage ? `${character.generation_stage} — ` : ""}
                 step {character.progress.value}/{character.progress.max}
               </span>
             </>
           ) : (
-            <span>queued…</span>
+            <span>{character.generation_stage || "queued…"}</span>
           )}
         </div>
+      )}
+      {character.status === "generating" && character.generation_log && (
+        <details className="breakdown-live-text" open>
+          <summary>ComfyUI log</summary>
+          <pre ref={logRef}>{character.generation_log}</pre>
+        </details>
       )}
       {character.error && <p className="scene-error">{character.error}</p>}
 
       <div className="scene-feedback-actions">
-        <input type="file" accept="image/*" onChange={handleUploadImage} disabled={busy} />
-        {engines.length > 0 && (
-          <select value={engineId} onChange={(e) => setEngineId(e.target.value)}>
-            {engines.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.label}
-              </option>
-            ))}
-          </select>
-        )}
+        <label className="scene-count-field character-upload-field">
+          Upload your own instead
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleUploadImage}
+            disabled={busy}
+          />
+        </label>
+        <label className="scene-count-field">
+          Model to generate with
+          {engines.length > 0 ? (
+            <select value={engineId} onChange={(e) => setEngineId(e.target.value)}>
+              {engines.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="character-no-engines">
+              No image models available - check Settings
+            </span>
+          )}
+        </label>
         <button
           onClick={handleGenerateImage}
-          disabled={busy || character.status === "generating"}
+          disabled={busy || character.status === "generating" || !engineId}
         >
-          {character.image_path ? "Regenerate" : "Generate portrait"}
+          {character.image_path
+            ? `Regenerate with ${engines.find((e) => e.id === engineId)?.label || "this model"}`
+            : `Generate portrait with ${engines.find((e) => e.id === engineId)?.label || "this model"}`}
         </button>
       </div>
     </div>

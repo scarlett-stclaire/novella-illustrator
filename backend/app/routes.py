@@ -666,7 +666,13 @@ async def generate_character_image(
     )
 
     updated = storage.update_character(
-        novella_id, character_id, status="generating", error=None, progress=None
+        novella_id,
+        character_id,
+        status="generating",
+        error=None,
+        progress=None,
+        generation_stage=None,
+        generation_log=None,
     )
     _create_tracked_task(
         novella_id,
@@ -686,9 +692,20 @@ async def _run_character_generation(
             novella_id, character_id, progress=Progress(value=value, max=max_value)
         )
 
+    async def on_stage(stage: str) -> None:
+        storage.update_character(novella_id, character_id, generation_stage=stage)
+
+    async def on_log_line(text: str) -> None:
+        storage.update_character(novella_id, character_id, generation_log=text)
+
     try:
         await imagegen.generate_image(
-            prompt, output_path, engine_id=engine_id, on_progress=on_progress
+            prompt,
+            output_path,
+            engine_id=engine_id,
+            on_progress=on_progress,
+            on_stage=on_stage,
+            on_log_line=on_log_line,
         )
         storage.update_character(
             novella_id,
@@ -696,11 +713,19 @@ async def _run_character_generation(
             status="ready",
             image_path=f"/api/images/{novella_id}/character_{character_id}.png",
             progress=None,
+            generation_stage=None,
+            generation_log=None,
             engine_id=engine_id,
         )
     except Exception as exc:  # noqa: BLE001
         storage.update_character(
-            novella_id, character_id, status="error", error=str(exc), progress=None
+            novella_id,
+            character_id,
+            status="error",
+            error=str(exc),
+            progress=None,
+            generation_stage=None,
+            generation_log=None,
         )
 
 
@@ -1048,6 +1073,12 @@ async def _run_generation(
             novella_id, scene_id, progress=Progress(value=value, max=max_value)
         )
 
+    async def on_stage(stage: str) -> None:
+        storage.update_scene(novella_id, scene_id, generation_stage=stage)
+
+    async def on_log_line(text: str) -> None:
+        storage.update_scene(novella_id, scene_id, generation_log=text)
+
     try:
         await imagegen.generate_image(
             image_prompt,
@@ -1055,6 +1086,8 @@ async def _run_generation(
             engine_id=engine_id,
             reference_image_path=reference_image_path,
             on_progress=on_progress,
+            on_stage=on_stage,
+            on_log_line=on_log_line,
         )
         storage.update_scene(
             novella_id,
@@ -1062,9 +1095,17 @@ async def _run_generation(
             status="done",
             image_path=f"/api/images/{novella_id}/{scene_id}.png",
             progress=None,
+            generation_stage=None,
+            generation_log=None,
             engine_id=engine_id,
         )
     except Exception as exc:  # noqa: BLE001
         storage.update_scene(
-            novella_id, scene_id, status="error", error=str(exc), progress=None
+            novella_id,
+            scene_id,
+            status="error",
+            error=str(exc),
+            progress=None,
+            generation_stage=None,
+            generation_log=None,
         )
