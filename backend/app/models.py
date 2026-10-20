@@ -52,6 +52,10 @@ class Novella(BaseModel):
     scenes: list[Scene] = []
     status: str = "draft"  # draft | breaking_down | ready | error
     breakdown_progress: Optional[Progress] = None
+    # Live-streamed raw model output for the chunk currently being processed
+    # (Ollama only - see providers.py's on_token) - so a long single-chunk
+    # wait shows real activity, not just an elapsed-time guess.
+    breakdown_live_text: Optional[str] = None
     breakdown_error: Optional[str] = None
     target_scene_count: Optional[int] = None
     text_provider_id: Optional[str] = None  # which text provider ran the breakdown

@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 from typing import Awaitable, Callable, Optional
 
 import httpx
@@ -8,6 +9,25 @@ from pydantic import BaseModel, Field, ValidationError
 
 from . import providers
 from .providers import TextProvider
+
+
+def _throttled(
+    fn: Callable[[str], Awaitable[None]], min_interval_seconds: float = 0.4
+) -> Callable[[str], Awaitable[None]]:
+    """Wraps a live-text callback so it's actually called at most every
+    min_interval_seconds - a token-level callback can fire dozens of times a
+    second, and this feeds a UI progress display plus (via the route layer)
+    a storage write per call, not something worth doing per-token."""
+    state = {"last_call": 0.0}
+
+    async def wrapped(text: str) -> None:
+        now = time.monotonic()
+        if now - state["last_call"] < min_interval_seconds:
+            return
+        state["last_call"] = now
+        await fn(text)
+
+    return wrapped
 
 
 class SceneChunk(BaseModel):
@@ -121,6 +141,7 @@ async def breakdown_into_scenes(
     target_scene_count: Optional[int] = None,
     on_chunk_done: Optional[Callable[[int, int, list[dict]], Awaitable[None]]] = None,
     provider: Optional[TextProvider] = None,
+    on_live_text: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> list[dict]:
     provider = provider or providers.resolve_default_provider()
     chunks = _chunk_text(text)
@@ -140,9 +161,16 @@ async def breakdown_into_scenes(
                 f"from the passage below.)\n\n{chunk}"
             )
 
+        on_token = _throttled(on_live_text) if on_live_text is not None else None
         content = await provider.chat(
-            SYSTEM_PROMPT, user_content, json_mode=True, response_schema=SceneBreakdown
+            SYSTEM_PROMPT,
+            user_content,
+            json_mode=True,
+            response_schema=SceneBreakdown,
+            on_token=on_token,
         )
+        if on_live_text is not None:
+            await on_live_text(content)
 
         parsed = _parse_structured(content, SceneBreakdown, "scenes")
         new_scenes = [

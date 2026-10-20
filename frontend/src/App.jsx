@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import UploadForm from "./components/UploadForm.jsx";
 import SceneList from "./components/SceneList.jsx";
@@ -147,6 +147,13 @@ export default function App() {
     }, 1000);
     return () => clearInterval(interval);
   }, [breakingDown]);
+
+  const liveTextRef = useRef(null);
+  useEffect(() => {
+    if (liveTextRef.current) {
+      liveTextRef.current.scrollTop = liveTextRef.current.scrollHeight;
+    }
+  }, [novella?.breakdown_live_text]);
 
   const hasScenes = (novella?.scenes.length ?? 0) > 0;
   const hasCharacters =
@@ -436,6 +443,12 @@ export default function App() {
                 </span>
               )}
             </div>
+          )}
+          {breakingDown && novella.breakdown_live_text && (
+            <details className="breakdown-live-text" open>
+              <summary>What the model is generating right now</summary>
+              <pre ref={liveTextRef}>{novella.breakdown_live_text}</pre>
+            </details>
           )}
           {novella.status === "error" && novella.breakdown_error && (
             <p className="error">{novella.breakdown_error}</p>

@@ -287,6 +287,7 @@ async def breakdown_novella(
         status="breaking_down",
         breakdown_progress=None,
         breakdown_error=None,
+        breakdown_live_text=None,
         text_provider_id=text_provider_id,
     )
 
@@ -343,6 +344,9 @@ async def _run_breakdown(
             breakdown_progress=Progress(value=value, max=max_value),
         )
 
+    async def on_live_text(text: str) -> None:
+        storage.update_novella(novella_id, breakdown_live_text=text)
+
     try:
         provider = (
             providers.get_provider(text_provider_id, ollama_model=ollama_model)
@@ -354,11 +358,18 @@ async def _run_breakdown(
             target_scene_count=target_scene_count,
             on_chunk_done=on_chunk_done,
             provider=provider,
+            on_live_text=on_live_text,
         )
-        storage.update_novella(novella_id, status="ready", breakdown_progress=None)
+        storage.update_novella(
+            novella_id, status="ready", breakdown_progress=None, breakdown_live_text=None
+        )
     except Exception as exc:  # noqa: BLE001
         storage.update_novella(
-            novella_id, status="error", breakdown_error=str(exc), breakdown_progress=None
+            novella_id,
+            status="error",
+            breakdown_error=str(exc),
+            breakdown_progress=None,
+            breakdown_live_text=None,
         )
 
 

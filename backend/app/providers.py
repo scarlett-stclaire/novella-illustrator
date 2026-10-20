@@ -6,9 +6,10 @@ run against the local Ollama model or a frontier API key interchangeably.
 """
 
 import abc
+import json
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 import httpx
 from pydantic import BaseModel
@@ -39,13 +40,20 @@ class TextProvider(abc.ABC):
         *,
         json_mode: bool = False,
         response_schema: Optional[type[BaseModel]] = None,
+        on_token: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> str:
         """Send a single system+user turn, return the raw text response.
 
         response_schema, when given, asks the provider to constrain its
         output to that exact JSON shape (stronger than json_mode's "valid
         JSON, any shape"). Not every provider can actually enforce this -
-        see each implementation's docstring."""
+        see each implementation's docstring.
+
+        on_token, when given, is called with the accumulated text so far as
+        it streams in - lets a caller show live progress during a call that
+        can take minutes with a large local model. Only Ollama actually
+        streams; other providers just never call it (still return the full
+        text normally, so callers must not assume on_token fires at all)."""
 
 
 class OllamaProvider(TextProvider):
@@ -72,27 +80,45 @@ class OllamaProvider(TextProvider):
         *,
         json_mode: bool = False,
         response_schema: Optional[type[BaseModel]] = None,
+        on_token: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> str:
         """Ollama's `format` field accepts either the string "json" (valid
         JSON, any shape) or a full JSON Schema object (output constrained to
         match it exactly) - response_schema uses the latter, a much
         stronger guarantee than json_mode alone."""
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if response_schema is not None:
+            payload["format"] = response_schema.model_json_schema()
+        elif json_mode:
+            payload["format"] = "json"
+
+        if on_token is None:
+            payload["stream"] = False
+            async with httpx.AsyncClient(timeout=300) as client:
+                response = await client.post(f"{self.base_url}/api/chat", json=payload)
+                response.raise_for_status()
+                return response.json()["message"]["content"]
+
+        payload["stream"] = True
+        accumulated = ""
         async with httpx.AsyncClient(timeout=300) as client:
-            payload = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "stream": False,
-            }
-            if response_schema is not None:
-                payload["format"] = response_schema.model_json_schema()
-            elif json_mode:
-                payload["format"] = "json"
-            response = await client.post(f"{self.base_url}/api/chat", json=payload)
-            response.raise_for_status()
-            return response.json()["message"]["content"]
+            async with client.stream(
+                "POST", f"{self.base_url}/api/chat", json=payload
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    chunk = json.loads(line)
+                    accumulated += chunk.get("message", {}).get("content", "")
+                    await on_token(accumulated)
+        return accumulated
 
 
 class AnthropicProvider(TextProvider):
@@ -114,8 +140,11 @@ class AnthropicProvider(TextProvider):
         *,
         json_mode: bool = False,
         response_schema: Optional[type[BaseModel]] = None,
+        on_token: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> str:
-        # response_schema isn't enforced here yet - Claude's structured-output
+        # Streaming isn't implemented here - on_token is simply never called,
+        # per the interface contract. response_schema isn't enforced here yet
+        # - Claude's structured-output
         # support needs verifying against current API docs before wiring up
         # (tool-use forcing or output_config/format), not guessing the shape.
         # Falls back to the existing free-form JSON instruction either way;
@@ -151,7 +180,9 @@ class OpenAIProvider(TextProvider):
         *,
         json_mode: bool = False,
         response_schema: Optional[type[BaseModel]] = None,
+        on_token: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> str:
+        # Streaming isn't implemented here - on_token is simply never called.
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=self.api_key)
