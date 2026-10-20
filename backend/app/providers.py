@@ -196,9 +196,14 @@ PROVIDER_REGISTRY: dict[str, ProviderMeta] = {
 DEFAULT_TEXT_PROVIDER_ID = os.environ.get("DEFAULT_TEXT_PROVIDER", "ollama")
 
 
-def get_provider(provider_id: str) -> TextProvider:
+def get_provider(provider_id: str, ollama_model: Optional[str] = None) -> TextProvider:
     if provider_id == "ollama":
-        return OllamaProvider(model=settings_store.get_ollama_model() or OLLAMA_MODEL)
+        # ollama_model is a one-off override (e.g. "use qwen for just this
+        # breakdown") - falls back to the Settings-level default, same as
+        # before, when not given.
+        return OllamaProvider(
+            model=ollama_model or settings_store.get_ollama_model() or OLLAMA_MODEL
+        )
     if provider_id == "anthropic":
         api_key = settings_store.get_key("anthropic")
         if not api_key:

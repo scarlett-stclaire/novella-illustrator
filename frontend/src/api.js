@@ -59,15 +59,15 @@ export const api = {
       }),
     }),
   getNovella: (id) => request(`/novellas/${id}`),
-  breakdown: (id, textProviderId) =>
-    request(
-      `/novellas/${id}/breakdown${
-        textProviderId
-          ? `?text_provider_id=${encodeURIComponent(textProviderId)}`
-          : ""
-      }`,
-      { method: "POST" }
-    ),
+  breakdown: (id, textProviderId, ollamaModel) => {
+    const params = new URLSearchParams();
+    if (textProviderId) params.set("text_provider_id", textProviderId);
+    if (ollamaModel) params.set("ollama_model", ollamaModel);
+    const qs = params.toString();
+    return request(`/novellas/${id}/breakdown${qs ? `?${qs}` : ""}`, {
+      method: "POST",
+    });
+  },
   updateScenePrompt: (novellaId, sceneId, imagePrompt) =>
     request(`/novellas/${novellaId}/scenes/${sceneId}`, {
       method: "PATCH",

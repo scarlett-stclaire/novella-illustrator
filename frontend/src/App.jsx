@@ -9,6 +9,7 @@ import Characters from "./components/Characters.jsx";
 import MindMap from "./components/MindMap.jsx";
 import Publish from "./components/Publish.jsx";
 import WorkflowBar from "./components/WorkflowBar.jsx";
+import NovellaSidebar from "./components/NovellaSidebar.jsx";
 
 function navigate(path) {
   window.history.pushState({}, "", path);
@@ -39,6 +40,7 @@ export default function App() {
   const [engines, setEngines] = useState([]);
   const [textProviders, setTextProviders] = useState([]);
   const [defaultTextProviderId, setDefaultTextProviderId] = useState("ollama");
+  const [ollamaModels, setOllamaModels] = useState([]);
 
   useEffect(() => {
     // On a cold launch of the packaged app, the frontend renders instantly
@@ -77,6 +79,10 @@ export default function App() {
     }
     pollHealth();
     loadWithRetry(api.listEngines, setEngines);
+    loadWithRetry(api.listOllamaModels, (data) => setOllamaModels(data.models));
+    // The sidebar needs this regardless of which page is showing, not just
+    // the home page (which already refreshes it itself below).
+    loadWithRetry(api.listNovellas, setNovellas);
     loadWithRetry(api.listTextProviders, (data) => {
       setTextProviders(data.providers);
       setDefaultTextProviderId(data.default_provider_id);
@@ -112,6 +118,9 @@ export default function App() {
         setError(err.message);
         setNovella(null);
       });
+    // Refreshes the sidebar's list too (e.g. a freshly-created novella's
+    // title/status), without requiring a trip back to the home page.
+    api.listNovellas().then(setNovellas).catch(() => {});
   }, [novellaId]);
 
   const anyGenerating = novella?.scenes.some((s) => s.status === "generating") ?? false;
@@ -227,12 +236,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [novella?.id, anyGenerating, breakingDown, extractingCharacters, anyCharacterGenerating]);
 
-  async function handleCreate(title, text, targetSceneCount, textProviderId) {
+  async function handleCreate(title, text, targetSceneCount, textProviderId, ollamaModel) {
     setBusy(true);
     setError(null);
     try {
       const created = await api.createNovella(title, text, targetSceneCount);
-      await api.breakdown(created.id, textProviderId);
+      await api.breakdown(created.id, textProviderId, ollamaModel);
       navigate(`/novella/${created.id}`);
     } catch (err) {
       setError(err.message);
@@ -313,6 +322,12 @@ export default function App() {
 
   return (
     <div className="app">
+      <NovellaSidebar
+        novellas={novellas}
+        activeNovellaId={novellaId}
+        onSelect={(id) => navigate(`/novella/${id}`)}
+        onHome={() => navigate("/")}
+      />
       <nav className="app-nav">
         <button className="home-link wordmark" onClick={() => navigate("/")}>
           <span className="wordmark-script">Novella</span>
@@ -343,6 +358,7 @@ export default function App() {
             busy={busy}
             providers={textProviders}
             defaultProviderId={defaultTextProviderId}
+            ollamaModels={ollamaModels}
           />
           <NovellaHome
             novellas={novellas}

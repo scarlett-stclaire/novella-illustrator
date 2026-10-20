@@ -269,7 +269,11 @@ async def get_novella(novella_id: str):
 
 
 @router.post("/novellas/{novella_id}/breakdown", response_model=Novella)
-async def breakdown_novella(novella_id: str, text_provider_id: Optional[str] = None):
+async def breakdown_novella(
+    novella_id: str,
+    text_provider_id: Optional[str] = None,
+    ollama_model: Optional[str] = None,
+):
     novella = storage.load_novella(novella_id)
     if novella is None:
         raise HTTPException(status_code=404, detail="Novella not found")
@@ -288,7 +292,11 @@ async def breakdown_novella(novella_id: str, text_provider_id: Optional[str] = N
 
     asyncio.create_task(
         _run_breakdown(
-            novella_id, novella.text, novella.target_scene_count, text_provider_id
+            novella_id,
+            novella.text,
+            novella.target_scene_count,
+            text_provider_id,
+            ollama_model,
         )
     )
 
@@ -300,6 +308,7 @@ async def _run_breakdown(
     text: str,
     target_scene_count: int | None,
     text_provider_id: Optional[str] = None,
+    ollama_model: Optional[str] = None,
 ) -> None:
     # Fetched once for the whole breakdown run rather than per-scene - engine
     # availability won't change mid-run, and this avoids hammering ComfyUI's
@@ -336,7 +345,7 @@ async def _run_breakdown(
 
     try:
         provider = (
-            providers.get_provider(text_provider_id)
+            providers.get_provider(text_provider_id, ollama_model=ollama_model)
             if text_provider_id
             else providers.resolve_default_provider()
         )

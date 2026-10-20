@@ -7,11 +7,20 @@ const SOURCE_TABS = [
   { id: "urls", label: "From URLs" },
 ];
 
-export default function UploadForm({ onSubmit, busy, providers, defaultProviderId }) {
+export default function UploadForm({
+  onSubmit,
+  busy,
+  providers,
+  defaultProviderId,
+  ollamaModels,
+}) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [targetSceneCount, setTargetSceneCount] = useState("");
-  const [textProviderId, setTextProviderId] = useState("");
+  // Either a bare provider id ("anthropic"/"openai") or "ollama:<model name>"
+  // - Ollama needs a specific model, not just the provider, picked right
+  // here rather than requiring a trip to Settings.
+  const [modelSelection, setModelSelection] = useState("");
   const [sourceTab, setSourceTab] = useState("paste");
   const [urlsInput, setUrlsInput] = useState("");
   const [extracting, setExtracting] = useState(false);
@@ -69,11 +78,15 @@ export default function UploadForm({ onSubmit, busy, providers, defaultProviderI
     e.preventDefault();
     if (!title.trim() || !text.trim()) return;
     const count = parseInt(targetSceneCount, 10);
+    const [textProviderId, ollamaModel] = modelSelection.startsWith("ollama:")
+      ? ["ollama", modelSelection.slice("ollama:".length)]
+      : [modelSelection, null];
     onSubmit(
       title.trim(),
       text,
       Number.isFinite(count) && count > 0 ? count : null,
-      textProviderId || null
+      textProviderId || null,
+      ollamaModel
     );
   }
 
@@ -168,19 +181,28 @@ export default function UploadForm({ onSubmit, busy, providers, defaultProviderI
         <label className="scene-count-field">
           Scene-breakdown model
           <select
-            value={textProviderId}
-            onChange={(e) => setTextProviderId(e.target.value)}
+            value={modelSelection}
+            onChange={(e) => setModelSelection(e.target.value)}
           >
             <option value="">
               Default ({providers.find((p) => p.id === defaultProviderId)?.label || defaultProviderId})
             </option>
             {providers
               .filter((p) => p.available)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
+              .map((p) =>
+                p.id === "ollama" && ollamaModels?.length > 0 ? (
+                  ollamaModels.map((m) => (
+                    <option key={`ollama:${m.name}`} value={`ollama:${m.name}`}>
+                      Ollama — {m.name}
+                      {m.size_bytes ? ` (${(m.size_bytes / 1e9).toFixed(1)} GB)` : ""}
+                    </option>
+                  ))
+                ) : (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                )
+              )}
           </select>
         </label>
       )}

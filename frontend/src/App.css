@@ -1265,3 +1265,149 @@ select {
 .scene-card .cost-perf-time {
   color: var(--gray);
 }
+
+/* ==========================================================================
+   Novella sidebar - expandable panel anchored to the left edge of the
+   viewport (not the centered .app container), so you can jump between
+   novellas from any page without going back to the home screen first.
+   ========================================================================== */
+.sidebar-toggle {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-2);
+  background: var(--ink);
+  color: var(--on-dark-primary);
+  border: none;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  cursor: pointer;
+  box-shadow: 2px 0 12px rgba(14, 13, 12, 0.25);
+}
+
+.sidebar-toggle-arrow {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.sidebar-toggle-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sidebar-toggle-open {
+  left: 300px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: rgba(14, 13, 12, 0.35);
+}
+
+.novella-sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 28;
+  width: 300px;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+  background: var(--cream);
+  border-right: 1px solid var(--hairline-light-strong);
+  box-shadow: 4px 0 20px rgba(14, 13, 12, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.novella-sidebar-open {
+  transform: translateX(0);
+}
+
+.novella-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-5) var(--sp-4) var(--sp-3);
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  border-bottom: 1px solid var(--hairline-light-strong);
+}
+
+.sidebar-home-link {
+  background: var(--rose);
+  color: var(--white);
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: var(--sp-1) var(--sp-3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.novella-sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.novella-sidebar-empty {
+  padding: var(--sp-4);
+  color: var(--gray);
+  font-size: 13px;
+  text-align: center;
+}
+
+.novella-sidebar-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.novella-sidebar-item:hover {
+  background: var(--white);
+  border-color: var(--hairline-light-strong);
+}
+
+.novella-sidebar-item-active {
+  background: var(--white);
+  border-color: var(--rose);
+}
+
+.novella-sidebar-item-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+.novella-sidebar-item-meta {
+  font-size: 11px;
+  color: var(--gray);
+}
